@@ -179,6 +179,35 @@ y_pred = model.predict(X_test)
 ...
 ```
 
+## How to use example files
+
+1. Install the package LogNNet [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#installation)
+2. Download file [example_LogNNet_classification.py](example_LogNNet_classification.py) or / and [example_LogNNet_regression.py](example_LogNNet_regression.py)
+3. In the directory where the example script is located, create a folder named `database`
+4. Place your CSV database file into the `database` folder
+
+The project structure should be as follows:
+```
+   your_project_folder/
+   ├── example_LogNNet_classification.py
+   ├── example_LogNNet_regression.py
+   └── database/
+       └── your_database.csv
+```   
+5. Configure Parameters 
+
+In both example files there are variables "input_file", "target_column_input_file" and "LogNNet_params".
+- input_file - variable containing the name of the *.csv file in the folder "/database/"
+- target_column_input_file - variable containing the name of the target column in the input file. 
+If the variable is not defined, the first column in the file "input_file" will be selected.
+- LogNNet_params - dictionary containing the parameters of the LogNNet neural network [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#parameters).
+
+The "example_LogNNet_regression.py" contains the variable "noise_in_data" which sets the noise level for the input data.
+
+6. If changes have been made, you should save the file. Run the example files
+7. Once executed, a new directory LogNNet_models will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt`
+8. If a regression task was performed, an additional file will be created with the predicted data, file named `{unix_time}_data_{database_name}.txt`
+
 ## Authors
 
 This library is developed and maintained by Yuriy Izotov (<izotov93@yandex.ru>) and Andrei Velichko (<velichkogf@gmail.com>).
