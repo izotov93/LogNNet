@@ -34,19 +34,19 @@ pip install --upgrade LogNNet
 
 ## Parameters
 
-1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 70)
+1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 90)
 
 This element represents the number of neurons (nr) in the input layer. It can be specified as a range for optimization in the PSO method (e.g., (10, 70)) or as a specific number.
 
-2. `first_layer_neurons` (array-like of int or singular int value, optional), optional, default=(1, 40)
+2. `first_layer_neurons` (array-like of int or singular int value, optional), optional, default=(1, 60)
 
 This element represents the number of neurons in the first hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 40)) or as a specific number.
 
-3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 15)
+3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 25)
 
 The element represents the number of neurons in the second hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 15)) or as a specific number.
 
-4. `learning_rate` (array-like of float or singular float value, optional), default=(0.05, 0.5)
+4. `learning_rate` (array-like of float or singular float value, optional), default=(0.01, 0.5)
 
 The range of learning rate values that the optimizer will use to adjust the model's parameters.
 
@@ -61,7 +61,7 @@ This parameter defines the conditions for selecting features in the input vector
 * A range of feature indices as a tuple (e.g., (1, 100) means the PSO method will determine the best features from index 1 to 100).
 * A single integer indicating the number of features to be used (e.g., 20 means the PSO method will select the best combination of 20 features). If set to -1, all features from the input vector will be used.
 
-7. `ngen` (array-like of int or singular int value, optional), default=(1, 100)
+7. `ngen` (array-like of int or singular int value, optional), default=(1, 500)
 
 The range of generations for the optimization algorithm that will be used to find the optimal model parameters.
 
@@ -86,7 +86,7 @@ For classification (LogNNetClassifier model), input of the following metrics is 
 9.`selected_metric_class` (int or None, optional) Default is None
 
 Select a class metric for training model. Supports input of the following metrics precision, recall and f1 for the LogNNetClassifier class.
-When using LogNNetRegressor model is not used.
+**When using LogNNetRegressor model is not used.**
 
 10. `num_folds` (int value, optional), default=5
 
@@ -112,6 +112,10 @@ A fixed seed for the random number generator, ensuring the reproducibility of re
 
 A parameter indicating that the data will be shuffled before splitting into training and testing sets.
 
+15. `noise` (array-like of int or singular int value, optional), default=(0.0, 0.01)
+
+The parameter containing level noise input data. **When using LogNNetClassifier model is not used.**
+
 ## Usage
 
 ### LogNNetRegressor ### 
@@ -124,21 +128,21 @@ from LogNNet.neural_network import LogNNetRegressor
 ...
 
 model = LogNNetRegressor(
-                input_layer_neurons=(10, 70),
-                first_layer_neurons=(1, 40),
-                hidden_layer_neurons=(1, 15),
-                learning_rate=(0.05, 0.5),
+                input_layer_neurons=(10, 90),
+                first_layer_neurons=(1, 60),
+                hidden_layer_neurons=(1, 25),
+                learning_rate=(0.01, 0.5),
                 n_epochs=(5, 150),
                 n_f=-1,
-                ngen=(1, 100),
+                ngen=(1, 500),
                 selected_metric='r2',
-                selected_metric_class=None,
                 num_folds=5, 
                 num_particles=10,
                 num_threads=10,
                 num_iterations=10, 
                 random_state=42,
-                shuffle=True)
+                shuffle=True,
+                noise=(0.0, 0.01))
                 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
@@ -157,13 +161,13 @@ from LogNNet.neural_network import LogNNetClassifier
 ...
 
 model = LogNNetClassifier(
-                input_layer_neurons=(10, 70),
-                first_layer_neurons=(1, 40),
-                hidden_layer_neurons=(1, 15),
-                learning_rate=(0.05, 0.5),
+                input_layer_neurons=(10, 90),
+                first_layer_neurons=(1, 60),
+                hidden_layer_neurons=(1, 25),
+                learning_rate=(0.01, 0.5),
                 n_epochs=(5, 150),
                 n_f=-1,
-                ngen=(1, 100),
+                ngen=(1, 500),
                 selected_metric='accuracy',
                 selected_metric_class=None,
                 num_folds=5, 
@@ -182,7 +186,7 @@ y_pred = model.predict(X_test)
 ## How to use example files
 
 1. Install the package LogNNet [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#installation)
-2. Download file [example_LogNNet_classification.py](example_LogNNet_classification.py) or / and [example_LogNNet_regression.py](example_LogNNet_regression.py)
+2. Download file [example_LogNNet_classification.py](https://github.com/izotov93/LogNNet/blob/master/example_LogNNet_classification.py) or / and [example_LogNNet_regression.py](https://github.com/izotov93/LogNNet/blob/master/example_LogNNet_regression.py)
 3. In the directory where the example script is located, create a folder named `database`
 4. Place your CSV database file into the `database` folder
 
@@ -205,7 +209,7 @@ If the variable is not defined, the first column in the file "input_file" will b
 The "example_LogNNet_regression.py" contains the variable "noise_in_data" which sets the noise level for the input data.
 
 6. If changes have been made, you should save the file. Run the example files
-7. Once executed, a new directory LogNNet_models will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt`
+7. Once executed, a new directory "LogNNet_results" will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt`
 8. If a regression task was performed, an additional file will be created with the predicted data, file named `{unix_time}_data_{database_name}.txt`
 
 ## Authors
@@ -214,7 +218,7 @@ This library is developed and maintained by Yuriy Izotov (<izotov93@yandex.ru>) 
 
 ## License
 
-The source code is licensed under the [MIT License](LICENSE).
+The source code is licensed under the [MIT License](https://github.com/izotov93/LogNNet/blob/master/LICENSE).
 
 ## References
 1.	NNetEn Entropy | Encyclopedia MDPI Available online: https://encyclopedia.pub/entry/18173 (accessed on 15 February 2024).

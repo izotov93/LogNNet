@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 
+"""
+Created on Thu Aug 17 10:00:00 2024
+
+@author: Yuriy Izotov
+@author: Andrei Velichko
+@user: izotov93
+"""
+
 import numpy as np
 import signal
-import os
-import time
 from LogNNet.mlp_evaluation import evaluate_mlp_mod
-from multiprocessing import cpu_count, Pool, current_process
+from multiprocessing import cpu_count, Pool
 
 stop_flag = False
 
@@ -14,6 +20,7 @@ def signal_handler(sig, frame):
     global stop_flag
     stop_flag = True
     print("Optimization stopping...")
+
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -55,6 +62,40 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                      selected_metric: str, selected_metric_class: int,
                      target: str, static_features=None) -> (float, object, dict):
 
+    """
+    Evaluate the fitness of a particle based on a machine learning model's performance.
+
+        :param particle_position: (list or array-like): A list or array that contains the
+                    hyperparameters of the model. The following indices are expected:
+            - [0] : Number of rows in matrix W
+            - [1] : Zn0 parameter
+            - [2] : Cint parameter
+            - [3] : Bint parameter
+            - [4] : Lint parameter
+            - [5] : Number of neurons in the first layer
+            - [6] : Number of neurons in the hidden layer
+            - [7] : Learning rate
+            - [8] : Number of epochs
+            - [9] : Prizn parameter
+            - [10] : n_f parameter
+            - [11] : ngen parameter
+            - [12] : noise parameter
+        :param X: (np.ndarray): The input features dataset.
+        :param y: (np.ndarray): The target values (class labels in classification, real numbers in regression).
+        :param num_folds: (int): The number of folds to use for cross-validation.
+        :param random_state: (int): Controls the randomness of the model evaluation.
+        :param shuffle: (bool): Whether to shuffle the data before splitting into batches.
+        :param selected_metric: (str): The metric to be used for evaluating the model performance.
+        :param selected_metric_class: (int): Identifies the target class for multi-class classification metrics.
+        :param target: (str): The type of  task: 'Regressor' for regression or 'Classifier' for classification.
+        :param static_features: (list or None, optional): The static features to be used in the model
+        :return: (tuple): A tuple containing the params:
+                - res_metric : (float) The value of the selected metric indicating the fitness of
+                                the model configuration.
+                - model: (object) The trained MLP model.
+                - input_layers_data: (dict) Data related to the input layers,
+                        including weights W and other normalization parameters.
+    """
     params = {
         'first_layer_neurons': int(particle_position[5]),
         'hidden_layer_neurons': int(particle_position[6]),
@@ -74,7 +115,9 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                                                          prizn=int(particle_position[9]),
                                                          n_f=int(particle_position[10]),
                                                          ngen=int(particle_position[11]),
-                                                         target=target, static_features=static_features)
+                                                         noise=float(particle_position[12]),
+                                                         target=target,
+                                                         static_features=static_features)
 
     res_metric = metrics[selected_metric] if selected_metric_class is None \
         else metrics[selected_metric][selected_metric_class]
@@ -82,40 +125,31 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
     return res_metric, model, input_layers_data
 
 
-def optimize_particle_batch(particles_batch):
-    results = []
-    for particle_args in particles_batch:
-        (particle, global_best_position, param_ranges, X, y,
-         num_folds, random_state, shuffle, selected_metric,
-         selected_metric_class, target, static_features) = particle_args
+def optimize_particle(args) -> Particle:
+    """
+    Optimizes a single particle's position in the particle swarm based on its fitness score.
 
-        particle.update_velocity(global_best_position)
-        particle.update_position(param_ranges)
-        particle.fitness, model, input_layers_data = (
-            fitness_function(particle.position, X, y, num_folds, random_state, shuffle, selected_metric,
-                             selected_metric_class, target, static_features))
+        :param args: args.
+        :return: (Particle): The updated particle instance with potentially improved fitness,
+                    best position, and related model information.
+    """
 
-        if particle.fitness > particle.best_fitness:
-            particle.best_fitness = particle.fitness
-            particle.best_position = particle.position.copy()
-            particle.best_model = model
-            particle.input_layers_data = input_layers_data
+    (particle, global_best_position, param_ranges, X, y, num_folds, random_state, shuffle,
+     selected_metric, selected_metric_class, target, static_features) = args
 
-        results.append(particle)
+    particle.update_velocity(global_best_position)
+    particle.update_position(param_ranges)
+    particle.fitness, model, input_layers_data = fitness_function(particle.position, X, y, num_folds,
+                                                                  random_state, shuffle, selected_metric,
+                                                                  selected_metric_class, target, static_features)
 
-    return results
+    if particle.fitness > particle.best_fitness:
+        particle.best_fitness = particle.fitness
+        particle.best_position = particle.position.copy()
+        particle.best_model = model
+        particle.input_layers_data = input_layers_data
 
-
-def split_into_batches(data, num_batches):
-    avg = len(data) // num_batches
-    remainder = len(data) % num_batches
-    batches = []
-    start = 0
-    for i in range(num_batches):
-        batch_size = avg + (1 if i < remainder else 0)
-        batches.append(data[start:start + batch_size])
-        start += batch_size
-    return batches
+    return particle
 
 
 def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
@@ -124,42 +158,67 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         random_state=42, shuffle=True, target='Regressor',
         static_features=(list, None)) -> (np.ndarray, float, object, dict):
 
+    """
+    Performs Particle Swarm Optimization (PSO) for hyperparameter tuning of LogNNet models.
+
+        :param X: (np.ndarray): The input features of the dataset, where rows represent samples
+            and columns represent features.
+        :param y: (np.ndarray): The target values corresponding to the input features.
+        :param num_folds: (int): The number of folds to use for cross-validation during the
+            evaluation of particle fitness.
+        :param param_ranges: (dict): A dictionary defining the ranges for the hyperparameters to
+            optimize for each model.
+        :param selected_metric: (str): A string representing the metric to be used for evaluating the
+            fitness of particles.
+        :param selected_metric_class: (int, None): For classification tasks, this defines the class to optimize.
+        :param dimensions: (int): The number of hyperparameters to optimize, corresponding to the number of
+            dimensions in the particle space.
+        :param num_particles: (int): The number of particles in the swarm that will explore the hyperparameter space.
+        :param num_iterations: (int): The number of iterations for the optimization process.
+        :param num_threads: (int, optional): he number of threads to use for parallel execution.
+            Default is the number of CPU cores.
+        :param random_state: (int, optional): Seed for random number generation to ensure reproducibility.
+            Default is 42.
+        :param shuffle: (bool, optional):  Whether to shuffle the data before splitting into folds
+            for cross-validation. Default is True.
+        :param target: (str, optional): The type of  task: 'Regressor' for regression or
+            'Classifier' for classification. Default is 'Regressor'.
+        :param static_features: (None or list, optional): -
+        :return: (tuple): A tuple containing the params:
+            - global_best_position: (np.ndarray): The best set of hyperparameters found during optimization.
+            - global_best_fitness: (float): The fitness value of the best hyperparameter set.
+            - global_best_model: (object) The best-trained model corresponding to the best hyperparameter set.
+            - input_layers_data : (dict): Data related to the input layers,
+                including weights W and other normalization parameters.
+    """
+
     particles = [Particle(param_ranges) for _ in range(num_particles)]
     global_best_position = np.random.rand(dimensions)
     global_best_fitness = float('-inf')
     global_best_model, input_layers_data = None, None
 
-    particles_batch = split_into_batches(
-        [(particle, global_best_position, param_ranges, X, y, num_folds, random_state, shuffle,
-          selected_metric, selected_metric_class, target, static_features) for particle in particles],
-        num_threads)
+    for iteration in range(num_iterations):
+        if stop_flag:
+            print("Stopping optimization ...")
+            break
 
-    with Pool(num_threads) as pool:
-        for iteration in range(num_iterations):
-            if stop_flag:
-                print("Stopping optimization ...")
-                break
+        with Pool(num_threads) as pool:
+            results = pool.map(optimize_particle,
+                               [(particle, global_best_position, param_ranges, X, y, num_folds,
+                                 random_state, shuffle, selected_metric, selected_metric_class,
+                                 target, static_features) for particle in particles])
 
-            try:
-                results = pool.map(optimize_particle_batch, particles_batch)
-            except KeyboardInterrupt:
-                pool.terminate()
-                pool.join()
-                print("Optimization interrupted.")
-                break
+            pool.close()
+            pool.join()
 
-            for batch in results:
-                for particle in batch:
-                    if particle.fitness > global_best_fitness:
-                        global_best_fitness = particle.fitness
-                        global_best_position = particle.position.copy()
-                        global_best_model = particle.best_model
-                        input_layers_data = particle.input_layers_data
+        for particle in results:
+            if particle.fitness > global_best_fitness:
+                global_best_fitness = particle.fitness
+                global_best_position = particle.position.copy()
+                global_best_model = particle.best_model
+                input_layers_data = particle.input_layers_data
 
-            print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 4)}")
-
-        pool.close()
-        pool.join()
+        print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 4)}")
 
     print(f"Global best position: {[round(float(i), 3) for i in global_best_position]}, "
           f"Global best result: {round(global_best_fitness, 4)}")

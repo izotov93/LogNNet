@@ -28,10 +28,10 @@ input_file = 'Veri_Statlog.csv'
 target_column_input_file = 'Ischemic'
 
 LogNNet_params = {
-    'input_layer_neurons': (10, 70),
-    'first_layer_neurons': (1, 40),
-    'hidden_layer_neurons': (1, 15),
-    'learning_rate': (0.05, 0.5),
+    'input_layer_neurons': (10, 90),
+    'first_layer_neurons': (1, 60),
+    'hidden_layer_neurons': (1, 25),
+    'learning_rate': (0.01, 0.5),
     'n_epochs': (5, 150),
     'n_f': 5,
     'ngen': (1, 500),
@@ -45,6 +45,7 @@ LogNNet_params = {
     'shuffle': True
 }
 
+
 def LogNNet_classification(input_data_file: str, target_column: (str, None),
                            basic_params: dict, output_dir: str) -> None:
     """
@@ -56,7 +57,7 @@ def LogNNet_classification(input_data_file: str, target_column: (str, None),
     ratio for training and testing, respectively. Finally, it saves the results
     to the specified output directory.
 
-        :param input_data_file: (str): The name a input CSV file containing feature data and target values.
+        :param input_data_file: (str): The name input CSV file containing feature data and target values.
         :param target_column: (str or None): The name of the column in the input data that contains the target values.
         :param basic_params: (dict): A dictionary containing the basic parameters to initialize the
             LogNNet classification.
@@ -230,7 +231,7 @@ def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
 
 
 if __name__ == "__main__":
-    output_directory = 'LogNNet_models'
+    output_directory = 'LogNNet_results'
     os.makedirs(output_directory, exist_ok=True)
 
     print("Running LogNNet classification example")

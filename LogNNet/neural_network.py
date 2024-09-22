@@ -7,7 +7,7 @@ Created on Thu Aug 17 10:00:00 2024
 @author: Andrei Velichko
 @user: izotov93
 """
-
+import numbers
 import time
 import os
 import numpy as np
@@ -42,13 +42,11 @@ def validate_param(param: (tuple, int, float, str, bool, None),
         if isinstance(param, (int, float)):
             param = (param, param)
 
-        elif (isinstance(param, tuple) and len(param) == 2 and
-              isinstance(param[0], expected_type) and isinstance(param[1], expected_type)):
-            if not (param[0] < param[1]):
-                param = (param[1], param[0])
+        elif isinstance(param, tuple) and len(param) == 2 and all(isinstance(x, numbers.Number) for x in param):
+            param = (param[1], param[0]) if not (param[0] < param[1]) else param
 
         else:
-            raise ValueError(f'Invalid parameter {param}. The parameter must be of type tuple or integer or float.'
+            raise ValueError(f'The parameter must be of type tuple or integer or float.'
                              f'If you use tuple then the length must be 2 and each '
                              f'element must have an integer or float')
         return param
@@ -65,13 +63,13 @@ def validate_param(param: (tuple, int, float, str, bool, None),
 
 class BaseLogNNet(object):
     def __init__(self,
-                 input_layer_neurons=(10, 70),
-                 first_layer_neurons=(1, 40),
-                 hidden_layer_neurons=(1, 15),
-                 learning_rate=(0.05, 0.5),
+                 input_layer_neurons=(10, 90),
+                 first_layer_neurons=(1, 60),
+                 hidden_layer_neurons=(1, 25),
+                 learning_rate=(0.01, 0.5),
                  n_epochs=(5, 150),
                  n_f=-1,
-                 ngen=(1, 100),
+                 ngen=(1, 500),
                  selected_metric='',
                  selected_metric_class=None,
                  num_folds=5,
@@ -79,7 +77,8 @@ class BaseLogNNet(object):
                  num_threads=10,
                  num_iterations=10,
                  random_state=42,
-                 shuffle=True):
+                 shuffle=True,
+                 noise=0):
 
         self.input_layer_data = None
         self._LogNNet_global_best_position = None
@@ -100,7 +99,7 @@ class BaseLogNNet(object):
             'prizn': (0, 1),
             'n_f': n_f,
             'ngen': validate_param(ngen, int, check_limits=True),
-            'noise': (0, 0),
+            'noise': validate_param(noise, float, check_limits=True),
         }
 
         self.basic_params = {
@@ -132,13 +131,15 @@ class BaseLogNNet(object):
         self.basic_params['y'] = y
 
         self._param_ranges['prizn'] = (*self._param_ranges['prizn'][:1], 2 ** X.shape[1] - 1)
-        self.basic_params['param_ranges'] = self._param_ranges
 
         if isinstance(self._param_ranges['n_f'], int):
             if self._param_ranges['n_f'] == -1:
                 self._param_ranges['n_f'] = (X.shape[1], X.shape[1])
             elif self._param_ranges['n_f'] > 0:
                 self._param_ranges['n_f'] = (int(self._param_ranges['n_f']), int(self._param_ranges['n_f']))
+            else:
+                raise ValueError("Invalid value for 'n_f'. Allowed values are -1 (all features) or positive numbers")
+
             self.basic_params['static_features'] = None
             self._param_ranges['ngen'] = (1, 1)
 
@@ -162,6 +163,8 @@ class BaseLogNNet(object):
             raise ValueError(f"Wrong param 'selected_metric_class'. "
                              f"Validate limits - (0, {int(np.max(y, axis=0))})")
 
+        self.basic_params['param_ranges'] = self._param_ranges
+
         (self._LogNNet_global_best_position, self._LogNNet_global_best_fitness,
          self._LogNNet_global_best_model, self.input_layer_data) = PSO(**self.basic_params)
 
@@ -179,7 +182,7 @@ class BaseLogNNet(object):
             'activation': self._LogNNet_global_best_model.activation,
             'n_f': int(self._LogNNet_global_best_position[10]),
             'ngen': int(self._LogNNet_global_best_position[11]),
-            'noise': int(self._LogNNet_global_best_position[12]),
+            'noise': float(self._LogNNet_global_best_position[12]),
             'random_state': self._LogNNet_global_best_model.random_state
         }
 
@@ -280,21 +283,22 @@ class BaseLogNNet(object):
 
 class LogNNetRegressor(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 70),
-                 first_layer_neurons=(1, 40),
-                 hidden_layer_neurons=(1, 15),
-                 learning_rate=(0.05, 0.5),
+                 input_layer_neurons=(10, 90),
+                 first_layer_neurons=(1, 60),
+                 hidden_layer_neurons=(1, 25),
+                 learning_rate=(0.01, 0.5),
                  n_epochs=(5, 150),
                  n_f=-1,
-                 ngen=(1, 100),
+                 ngen=(1, 500),
                  selected_metric='r2',
-                 selected_metric_class=None,
                  num_folds=5,
                  num_particles=10,
                  num_threads=10,
                  num_iterations=10,
                  random_state=42,
-                 shuffle=True):
+                 shuffle=True,
+                 noise=(0.0, 0.01),
+                 **kwargs):
         """
         Model LogNNet Regression.
 
@@ -331,8 +335,6 @@ class LogNNetRegressor(BaseLogNNet):
                         predicted values.
                     5. 'rmse': Root Mean Squared Error indicating the square root of the average squared differences.
                 Default value to 'r2'.
-            :param selected_metric_class: (int or None, optional): Select a class for training model. When using
-                LogNNetRegressor model is not used. Default is None.
             :param num_folds: (int, optional): The number of folds for cross-validation of the model.
                 Default value to 5.
             :param num_particles: (int, optional): The number of particles in the Particle Swarm Optimization (PSO)
@@ -345,8 +347,11 @@ class LogNNetRegressor(BaseLogNNet):
                 reproducibility of results. Default value to 42.
             :param shuffle: (bool, optional): A parameter indicating that the data will be shuffled.
                 Default is True.
+            :param noise: (tuple or float, optional): The parameter containing level noise input data.
+                Default value to (0.0, 0.01)
         """
 
+        self.kwargs = kwargs
         valid_options = ["r2", "pearson_corr", "mse", "mae", "rmse"]
 
         selected_metric = validate_param(selected_metric,
@@ -362,26 +367,26 @@ class LogNNetRegressor(BaseLogNNet):
             n_f=n_f,
             ngen=ngen,
             selected_metric=selected_metric,
-            selected_metric_class=selected_metric_class,
             num_folds=num_folds,
             num_particles=num_particles,
             num_threads=num_threads,
             num_iterations=num_iterations,
             random_state=random_state,
-            shuffle=shuffle)
+            shuffle=shuffle,
+            noise=noise)
 
         self.basic_params['target'] = 'Regressor'
 
 
 class LogNNetClassifier(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 70),
-                 first_layer_neurons=(1, 40),
-                 hidden_layer_neurons=(1, 15),
-                 learning_rate=(0.05, 0.5),
+                 input_layer_neurons=(10, 90),
+                 first_layer_neurons=(1, 60),
+                 hidden_layer_neurons=(1, 25),
+                 learning_rate=(0.01, 0.5),
                  n_epochs=(5, 150),
                  n_f=-1,
-                 ngen=(1, 100),
+                 ngen=(1, 500),
                  selected_metric='accuracy',
                  selected_metric_class=None,
                  num_folds=5,
@@ -389,7 +394,8 @@ class LogNNetClassifier(BaseLogNNet):
                  num_threads=10,
                  num_iterations=10,
                  random_state=42,
-                 shuffle=True):
+                 shuffle=True,
+                 **kwargs):
         """
         LogNNet classification class
 
@@ -440,6 +446,7 @@ class LogNNetClassifier(BaseLogNNet):
                 Default is True.
         """
 
+        self.kwargs = kwargs
         valid_options = ["overall_accuracy", "overall_mcc", "overall_precision", "overall_recall",
                          "overall_f1", "avg_precision", "avg_recall", "avg_f1", "avg_accuracy", "avg_mcc"]
 

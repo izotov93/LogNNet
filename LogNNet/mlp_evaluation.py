@@ -89,7 +89,7 @@ def evaluate_mlp_classifier(X_train: np.ndarray, X_test: np.ndarray,
 def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, params: dict, num_folds=5, num_rows_W=10,
                      Zn0=100, Cint=45, Bint=-43, Lint=3025, prizn=123, n_f=100, ngen=100,
                      shuffle=True, random_state=42, target='Regressor',
-                     static_features=None) -> (dict, object, dict):
+                     static_features=None, noise=0) -> (dict, object, dict):
     """
     Evaluates Multi-Layer Perceptron (MLP) models using cross-validation.
 
@@ -112,6 +112,7 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, params: dict, num_folds=5, nu
         :param target: (str, optional): The type of prediction task: 'Regressor' for regression or
             'Classifier' for classification. Default value 'Regressor'.
         :param static_features: (list or None, optional): List of input vector features to be used. Default is None.
+        :param noise: (float, optional): The noise level value. Default is 0.
         :return: (tuple): Tuple containing the params:
                 - metrics: (dict) Performance metrics of the model, varying depending on whether the
             task is regression or classification.
@@ -126,6 +127,11 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, params: dict, num_folds=5, nu
 
     all_y_true, all_y_pred = [], []
     mcc_scores, precision_scores, recall_scores, f1_scores, accuracy_scores = [], [], [], [], []
+
+    if target == 'Regressor':
+        X_denominator = np.max(X) - np.min(X)
+        random_noise = np.random.uniform(-noise * X_denominator, noise * X_denominator, X.shape)
+        X += random_noise
 
     kf = KFold(n_splits=num_folds, shuffle=shuffle, random_state=random_state)
     input_dim = X.shape[1]

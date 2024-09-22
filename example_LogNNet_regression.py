@@ -27,28 +27,27 @@ If the variable is not defined, the first column in the file "input_file" will b
 input_file = 'mackey-glass_beta=0_2_gamma=0_1_n=10_tau=17_2_dt=1s_0_NW50_G500_14451.csv'
 target_column_input_file = 'Target'
 
-noise_in_data = 0.005
-
 LogNNet_params = {
-    'input_layer_neurons': (10, 70),
-    'first_layer_neurons': (1, 40),
-    'hidden_layer_neurons': (1, 15),
-    'learning_rate': (0.05, 0.5),
+    'input_layer_neurons': (10, 90),
+    'first_layer_neurons': (1, 60),
+    'hidden_layer_neurons': (1, 25),
+    'learning_rate': (0.01, 0.5),
     'n_epochs': (5, 150),
     'n_f': -1,
-    'ngen': (1, 100),
+    'ngen': (1, 500),
     'selected_metric': 'r2',
-    'selected_metric_class': None,
     'num_folds': 5,
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
     'random_state': 42,
-    'shuffle': True
+    'shuffle': True,
+    'noise': (0, 0.01)
 }
 
+
 def LogNNet_regression_calculation(input_data_file: str, target_column: (str, None),
-                                   basic_params: dict, noise: float, output_dir: str) -> None:
+                                   basic_params: dict, output_dir: str) -> None:
     """
     Perform regression calculations using the LogNNet model on input data.
 
@@ -57,11 +56,9 @@ def LogNNet_regression_calculation(input_data_file: str, target_column: (str, No
     various performance metrics. It also introduces random noise to the training data.
     Finally, it saves the results and predictions to the specified output directory.
 
-        :param input_data_file: (str): The name a input CSV file containing feature data and target values.
+        :param input_data_file: (str): The name input CSV file containing feature data and target values.
         :param target_column: (str or None): The name of the column in the input data that contains the target values.
         :param basic_params: (dict): A dictionary containing the basic parameters to initialize the LogNNet regressor.
-        :param noise: (float): A float specifying the proportion of noise to be added to the training data.
-            The noise is scaled according to the range of the training features.
         :param output_dir: (str): The directory where the output results and predictions will be saved.
         :return: (None): Outputs the performance metrics and saves the predictions
             to a text file in the specified output directory (output_dir).
@@ -73,10 +70,6 @@ def LogNNet_regression_calculation(input_data_file: str, target_column: (str, No
     cutoff = len(X) - 3000
     X_train, X_test = X[:cutoff], X[cutoff:]
     y_train, y_test = y[:cutoff], y[cutoff:]
-
-    X_train_max = np.max(X_train) - np.min(X_train)
-    random_noise = np.random.uniform(-noise * X_train_max, noise * X_train_max, X_train.shape)
-    X_train += random_noise
 
     model = LogNNetRegressor(**basic_params)
 
@@ -240,7 +233,7 @@ def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
 
 
 if __name__ == "__main__":
-    output_directory = 'LogNNet_models'
+    output_directory = 'LogNNet_results'
     os.makedirs(output_directory, exist_ok=True)
 
     print("Running LogNNet regression example")
@@ -248,4 +241,4 @@ if __name__ == "__main__":
     input_file = os.path.join("database", input_file)
 
     LogNNet_regression_calculation(input_data_file=input_file, target_column=target_column_input_file,
-                                   noise=noise_in_data, basic_params=LogNNet_params, output_dir=output_directory)
+                                   basic_params=LogNNet_params, output_dir=output_directory)
