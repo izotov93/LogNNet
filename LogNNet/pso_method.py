@@ -38,7 +38,7 @@ class Particle:
         self.velocity = np.random.rand(self.dimensions) - 0.5
         self.best_position = self.position.copy()
         self.fitness = float('-inf')
-        self.best_fitness = float('-inf')
+        self.best_fitness = None
         self.best_model = None
         self.input_layers_data = None
 
@@ -143,7 +143,12 @@ def optimize_particle(args) -> Particle:
                                                                   random_state, shuffle, selected_metric,
                                                                   selected_metric_class, target, static_features)
 
-    if particle.fitness > particle.best_fitness:
+    if selected_metric in ['mse', 'mae', 'rmse']:
+        is_better = (particle.best_fitness is None or particle.fitness < particle.best_fitness)
+    else:
+        is_better = (particle.best_fitness is None or particle.fitness > particle.best_fitness)
+
+    if is_better:
         particle.best_fitness = particle.fitness
         particle.best_position = particle.position.copy()
         particle.best_model = model
@@ -194,7 +199,7 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
 
     particles = [Particle(param_ranges) for _ in range(num_particles)]
     global_best_position = np.random.rand(dimensions)
-    global_best_fitness = float('-inf')
+    global_best_fitness = None
     global_best_model, input_layers_data = None, None
 
     for iteration in range(num_iterations):
@@ -212,7 +217,12 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
             pool.join()
 
         for particle in results:
-            if particle.fitness > global_best_fitness:
+            if selected_metric in ['mse', 'mae', 'rmse']:
+                is_better = (global_best_fitness is None or particle.fitness < global_best_fitness)
+            else:
+                is_better = (global_best_fitness is None or particle.fitness > global_best_fitness)
+
+            if is_better:
                 global_best_fitness = particle.fitness
                 global_best_position = particle.position.copy()
                 global_best_model = particle.best_model

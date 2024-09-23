@@ -206,8 +206,6 @@ In both example files there are variables "input_file", "target_column_input_fil
 If the variable is not defined, the first column in the file "input_file" will be selected.
 - LogNNet_params - dictionary containing the parameters of the LogNNet neural network [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#parameters).
 
-The "example_LogNNet_regression.py" contains the variable "noise_in_data" which sets the noise level for the input data.
-
 6. If changes have been made, you should save the file. Run the example files
 7. Once executed, a new directory "LogNNet_results" will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt`
 8. If a regression task was performed, an additional file will be created with the predicted data, file named `{unix_time}_data_{database_name}.txt`
