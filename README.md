@@ -112,7 +112,7 @@ A fixed seed for the random number generator, ensuring the reproducibility of re
 
 A parameter indicating that the data will be shuffled before splitting into training and testing sets.
 
-15. `noise` (array-like of int or singular int value, optional), default=(0.0, 0.01)
+16. `noise` (array-like of int or singular int value, optional), default=(0.0, 0.01)
 
 The parameter containing level noise input data. **When using LogNNetClassifier model is not used.**
 

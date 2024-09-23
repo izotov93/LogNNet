@@ -33,7 +33,7 @@ LogNNet_params = {
     'hidden_layer_neurons': (1, 25),
     'learning_rate': (0.01, 0.5),
     'n_epochs': (5, 150),
-    'n_f': 5,
+    'n_f': -1,
     'ngen': (1, 500),
     'selected_metric': 'accuracy',
     'selected_metric_class': None,
