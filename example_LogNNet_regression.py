@@ -18,13 +18,12 @@ from LogNNet.neural_network import LogNNetRegressor
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from scipy.stats import pearsonr
 
-
 """
 - input_file - variable containing the name of the *.csv file in the folder "/database/"
 - target_column_input_file - variable containing the name of the target column in the input file. 
 If the variable is not defined, the first column in the file "input_file" will be selected.
 """
-input_file = 'mackey-glass_beta=0_2_gamma=0_1_n=10_tau=17_2_dt=1s_0_NW50_G500_14451.csv'
+input_file = 'mackey-glass_NW50_G500_14451.csv'
 target_column_input_file = 'Target'
 
 LogNNet_params = {
@@ -36,14 +35,37 @@ LogNNet_params = {
     'n_f': -1,
     'ngen': (1, 500),
     'selected_metric': 'r2',
-    'num_folds': 5,
+    'num_folds': 1,
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
     'random_state': 42,
-    'shuffle': True,
-    'noise': (0, 0.01)
+    'shuffle': True
 }
+
+
+def format_execution_time(start_time: float) -> str:
+    """
+    This function computes the elapsed time since the specified start_time
+    and formats it into a human-readable string. It only includes hours and
+    minutes if they are greater than zero. Seconds are always included.
+
+        :param start_time: (float): The start time in seconds
+        :return: (str): A formatted string representing the execution time.
+    """
+    execution_time = time.time() - start_time
+    hours, remainder = divmod(execution_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    time_parts = []
+    if hours > 0:
+        time_parts.append(f"{int(hours)} h.")
+    if minutes > 0:
+        time_parts.append(f"{int(minutes)} m.")
+
+    time_parts.append(f"{int(seconds)} sec.")
+
+    return " ".join(time_parts)
 
 
 def LogNNet_regression_calculation(input_data_file: str, target_column: (str, None),
@@ -63,6 +85,8 @@ def LogNNet_regression_calculation(input_data_file: str, target_column: (str, No
         :return: (None): Outputs the performance metrics and saves the predictions
             to a text file in the specified output directory (output_dir).
     """
+
+    start_time = time.time()
 
     input_file_name = os.path.splitext(os.path.basename(input_data_file))[0]
 
@@ -88,6 +112,8 @@ def LogNNet_regression_calculation(input_data_file: str, target_column: (str, No
 
     print(f"Final value of the metric '{basic_params['selected_metric']}' "
           f"on the test set = {metrics[basic_params['selected_metric']]}")
+
+    print(f"Computation time - {format_execution_time(start_time)}")
 
     save_unix_time = print_and_save_results(
         out_dir=output_dir,

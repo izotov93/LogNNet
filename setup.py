@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '1.2'
+VERSION = '1.3'
 
 
 def readme():
@@ -13,7 +13,6 @@ requirements = [
     'pandas>=2.2.2',
     'scikit-learn>=1.5.1',
     'scipy>=1.14.0',
-    'setuptools>=73.0.1',
     'joblib>=1.4.2'
 ]
 

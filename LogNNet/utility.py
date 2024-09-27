@@ -34,25 +34,22 @@ def normalize_data2(X_train: np.ndarray, X_test: np.ndarray,
     return X_train_normalized, X_test_normalized
 
 
-def normalize_data(X_train: np.ndarray, X_test: np.ndarray) -> (np.ndarray, np.ndarray):
+def normalize_data(X: np.ndarray) -> np.ndarray:
     """
     Function to normalize data using Min-Max Scaling method.
 
-        :param X_train: (numpy.ndarray): Array with training data
-        :param X_test: (numpy.ndarray): Array with testing data
-        :return:(tuple): Normalized training and testing data
-                (train_normalized: numpy.ndarray, test_normalized: numpy.ndarray)
+        :param X: (np.ndarray): Array with training data
+        :return:(np.ndarray): Normalized training and testing data
     """
 
-    X_train_min = np.min(X_train, axis=0)
-    X_train_max = np.max(X_train, axis=0)
+    X_train_min = np.min(X, axis=0)
+    X_train_max = np.max(X, axis=0)
     denominator = X_train_max - X_train_min
     denominator[denominator == 0] = 1
 
-    X_train_normalized = (X_train - X_train_min) / denominator
-    X_test_normalized = (X_test - X_train_min) / denominator
+    X_train_normalized = (X - X_train_min) / denominator
 
-    return X_train_normalized, X_test_normalized
+    return X_train_normalized
 
 
 def initialize_W(num_rows_W: int, input_dim: int, Zn0: int,
@@ -207,7 +204,10 @@ def calculate_metrics_for_regressor(all_y_true, all_y_pred) -> dict:
             - "rmse": Root Mean Squared Error indicating the square root of the average squared differences.
     """
 
-    pearson_corr, _ = pearsonr(all_y_true, all_y_pred)
+    if np.all(all_y_true == all_y_true[0]) or np.all(all_y_pred == all_y_pred[0]):
+        pearson_corr = 0
+    else:
+        pearson_corr, _ = pearsonr(all_y_true, all_y_pred)
     mse = mean_squared_error(all_y_true, all_y_pred)
 
     return {
@@ -239,26 +239,26 @@ def calculate_metrics_for_classifier(all_y_true, all_y_pred,
         :param recall_scores: (list, optional): List of recall scores to compute the average. Default is None
         :param f1_scores: (list, optional): List of F1 scores to compute the average. Default is None
         :param accuracy_scores: (list, optional): List of accuracy scores to compute the average. Default is None
+        :param all_labels: (list, optional): List containing possible labels in the array y. Default is None
         :return: dict: A dictionary containing the following metrics:
-                - "overall_mcc": Matthews Correlation Coefficient indicating classification quality.
-                - "overall_precision": Precision score computed with 'average=None'.
-                - "overall_recall": Recall score computed with 'average=None'.
-                - "overall_f1": F1 score computed with 'average=None'.
-                - "overall_accuracy": Accuracy score of the classifier.
-                - "conf_matrix": Confusion matrix providing a summary of prediction results.
+                - "mcc": Matthews Correlation Coefficient indicating classification quality.
+                - "precision": Precision score computed with 'average=None'.
+                - "recall": Recall score computed with 'average=None'.
+                - "f1": F1 score computed with 'average=None'.
+                - "accuracy": Accuracy score of the classifier.
                 - "avg_mcc": Average MCC if `mcc_scores` is provided.
                 - "avg_precision": Average precision if `precision_scores` is provided.
                 - "avg_recall": Average recall if `recall_scores` is provided.
                 - "avg_f1": Average F1 score if `f1_scores` is provided.
                 - "avg_accuracy": Average accuracy if `accuracy_scores` is provided.
     """
+
     metrics = {
-        "overall_mcc": matthews_corrcoef(all_y_true, all_y_pred),
-        "overall_precision": precision_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "overall_recall": recall_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "overall_f1": f1_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "overall_accuracy": accuracy_score(all_y_true, all_y_pred),
-        "conf_matrix": confusion_matrix(all_y_true, all_y_pred)
+        "mcc": matthews_corrcoef(all_y_true, all_y_pred),
+        "precision": precision_score(all_y_true, all_y_pred, average=None, zero_division=0),
+        "recall": recall_score(all_y_true, all_y_pred, average=None, zero_division=0),
+        "f1": f1_score(all_y_true, all_y_pred, average=None, zero_division=0),
+        "accuracy": accuracy_score(all_y_true, all_y_pred),
     }
 
     metrics.setdefault('avg_mcc', np.mean(mcc_scores)) if mcc_scores is not None else None

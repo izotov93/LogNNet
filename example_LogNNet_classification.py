@@ -37,13 +37,37 @@ LogNNet_params = {
     'ngen': (1, 500),
     'selected_metric': 'accuracy',
     'selected_metric_class': None,
-    'num_folds': 5,
+    'num_folds': 1,
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
     'random_state': 42,
     'shuffle': True
 }
+
+
+def format_execution_time(start_time: float) -> str:
+    """
+    This function computes the elapsed time since the specified start_time
+    and formats it into a human-readable string. It only includes hours and
+    minutes if they are greater than zero. Seconds are always included.
+
+        :param start_time: (float): The start time in seconds
+        :return: (str): A formatted string representing the execution time.
+    """
+    execution_time = time.time() - start_time
+    hours, remainder = divmod(execution_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    time_parts = []
+    if hours > 0:
+        time_parts.append(f"{int(hours)} h.")
+    if minutes > 0:
+        time_parts.append(f"{int(minutes)} m.")
+
+    time_parts.append(f"{int(seconds)} sec.")
+
+    return " ".join(time_parts)
 
 
 def LogNNet_classification(input_data_file: str, target_column: (str, None),
@@ -64,6 +88,8 @@ def LogNNet_classification(input_data_file: str, target_column: (str, None),
         :param output_dir: (str): The directory where the output results and predictions will be saved.
         :return: (None): Outputs the performance metrics to a text file in the specified output directory (output_dir).
     """
+
+    start_time = time.time()
 
     input_file_name = os.path.splitext(os.path.basename(input_data_file))[0]
 
@@ -94,6 +120,8 @@ def LogNNet_classification(input_data_file: str, target_column: (str, None),
 
     print(f"Final value of the metric '{basic_params['selected_metric']}{str_metric_class}' "
           f"on the test set = {str_value_metric}")
+
+    print(f"Computation time - {format_execution_time(start_time)}")
 
     print_and_save_results(
         out_dir=output_dir,

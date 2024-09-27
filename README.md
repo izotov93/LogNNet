@@ -36,15 +36,15 @@ pip install --upgrade LogNNet
 
 1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 90)
 
-This element represents the number of neurons (nr) in the input layer. It can be specified as a range for optimization in the PSO method (e.g., (10, 70)) or as a specific number.
+This element represents the number of neurons in the input layer. It can be specified as a range for optimization in the PSO method (e.g., (10, 90)) or as a specific number.
 
 2. `first_layer_neurons` (array-like of int or singular int value, optional), optional, default=(1, 60)
 
-This element represents the number of neurons in the first hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 40)) or as a specific number.
+This element represents the number of neurons in the first hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 60)) or as a specific number.
 
 3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 25)
 
-The element represents the number of neurons in the second hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 15)) or as a specific number.
+The element represents the number of neurons in the second hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 25)) or as a specific number.
 
 4. `learning_rate` (array-like of float or singular float value, optional), default=(0.01, 0.5)
 
@@ -112,10 +112,6 @@ A fixed seed for the random number generator, ensuring the reproducibility of re
 
 A parameter indicating that the data will be shuffled before splitting into training and testing sets.
 
-16. `noise` (array-like of int or singular int value, optional), default=(0.0, 0.01)
-
-The parameter containing level noise input data. **When using LogNNetClassifier model is not used.**
-
 ## Usage
 
 ### LogNNetRegressor ### 
@@ -141,8 +137,7 @@ model = LogNNetRegressor(
                 num_threads=10,
                 num_iterations=10, 
                 random_state=42,
-                shuffle=True,
-                noise=(0.0, 0.01))
+                shuffle=True)
                 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)

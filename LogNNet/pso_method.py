@@ -61,7 +61,6 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                      num_folds: int, random_state: int, shuffle: bool,
                      selected_metric: str, selected_metric_class: int,
                      target: str, static_features=None) -> (float, object, dict):
-
     """
     Evaluate the fitness of a particle based on a machine learning model's performance.
 
@@ -79,7 +78,6 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
             - [9] : Prizn parameter
             - [10] : n_f parameter
             - [11] : ngen parameter
-            - [12] : noise parameter
         :param X: (np.ndarray): The input features dataset.
         :param y: (np.ndarray): The target values (class labels in classification, real numbers in regression).
         :param num_folds: (int): The number of folds to use for cross-validation.
@@ -115,7 +113,6 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                                                          prizn=int(particle_position[9]),
                                                          n_f=int(particle_position[10]),
                                                          ngen=int(particle_position[11]),
-                                                         noise=float(particle_position[12]),
                                                          target=target,
                                                          static_features=static_features)
 
@@ -162,7 +159,6 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         num_particles: int, num_iterations: int, num_threads=cpu_count(),
         random_state=42, shuffle=True, target='Regressor',
         static_features=(list, None)) -> (np.ndarray, float, object, dict):
-
     """
     Performs Particle Swarm Optimization (PSO) for hyperparameter tuning of LogNNet models.
 
@@ -202,36 +198,37 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
     global_best_fitness = None
     global_best_model, input_layers_data = None, None
 
-    for iteration in range(num_iterations):
-        if stop_flag:
-            print("Stopping optimization ...")
-            break
+    with Pool(num_threads) as pool:
 
-        with Pool(num_threads) as pool:
-            results = pool.map(optimize_particle,
-                               [(particle, global_best_position, param_ranges, X, y, num_folds,
-                                 random_state, shuffle, selected_metric, selected_metric_class,
-                                 target, static_features) for particle in particles])
+        for iteration in range(num_iterations):
+            if stop_flag:
+                print("Stopping optimization ...")
+                pool.close()
+                pool.join()
+                break
 
-            pool.close()
-            pool.join()
+            args_list = [(particle, global_best_position, param_ranges, X, y, num_folds,
+                          random_state, shuffle, selected_metric, selected_metric_class,
+                          target, static_features) for particle in particles]
 
-        for particle in results:
-            if selected_metric in ['mse', 'mae', 'rmse']:
-                is_better = (global_best_fitness is None or particle.fitness < global_best_fitness)
-            else:
-                is_better = (global_best_fitness is None or particle.fitness > global_best_fitness)
+            results = pool.map(optimize_particle, args_list)
 
-            if is_better:
-                global_best_fitness = particle.fitness
-                global_best_position = particle.position.copy()
-                global_best_model = particle.best_model
-                input_layers_data = particle.input_layers_data
+            for particle in results:
+                if selected_metric in ["mse", "mae", "rmse"]:
+                    is_better = (global_best_fitness is None or particle.fitness < global_best_fitness)
+                else:
+                    is_better = (global_best_fitness is None or particle.fitness > global_best_fitness)
 
-        print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 4)}")
+                if is_better:
+                    global_best_fitness = particle.fitness
+                    global_best_position = particle.position.copy()
+                    global_best_model = particle.best_model
+                    input_layers_data = particle.input_layers_data
 
-    print(f"Global best position: {[round(float(i), 3) for i in global_best_position]}, "
-          f"Global best result: {round(global_best_fitness, 4)}")
+            print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness in fold: {round(global_best_fitness, 4)}")
+
+        pool.close()
+        pool.join()
 
     return global_best_position, global_best_fitness, global_best_model, input_layers_data
 

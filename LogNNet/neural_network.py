@@ -13,6 +13,7 @@ import os
 import numpy as np
 import joblib
 from LogNNet.pso_method import PSO
+from LogNNet.mlp_evaluation import testing_model_on_all_data
 from sklearn.neural_network import MLPRegressor, MLPClassifier
 import warnings
 
@@ -20,7 +21,7 @@ warnings.filterwarnings("ignore", message="Stochastic Optimizer: Maximum iterati
 
 
 def validate_param(param: (tuple, int, float, str, bool, None),
-                   expected_type: type, valid_options=(),
+                   expected_type: type, name_param: str, valid_options=(),
                    check_limits=False) -> (tuple, int, float, str, bool, None):
     """
     Checks and validates the parameter depending on its type and additional criteria.
@@ -35,6 +36,7 @@ def validate_param(param: (tuple, int, float, str, bool, None),
         :param check_limits: (bool, optional): Specifies whether the function should check limits
                             for a tuple or a number. If True, the parameter must be a number or a tuple
                             of two numbers. By default, False.
+        :param name_param: (str): The name of the validation parameter
         :return: (int, float, str, bool, tuple, None): A verified and validated parameter.
     """
 
@@ -46,16 +48,27 @@ def validate_param(param: (tuple, int, float, str, bool, None),
             param = (param[1], param[0]) if not (param[0] < param[1]) else param
 
         else:
-            raise ValueError(f'The parameter must be of type tuple or integer or float.'
+            raise ValueError(f'The parameter "{name_param}" must be of type tuple or integer or float.'
                              f'If you use tuple then the length must be 2 and each '
-                             f'element must have an integer or float')
+                             f'element must have an integer or float. Value {param} is not supported')
+
+        if any(value < 0 for value in param):
+            raise ValueError(f'The parameter "{name_param}" contains invalid negative values. '
+                             f'Value {param} is not supported')
+
         return param
 
     if isinstance(param, str) and not (len(param) != 0 and (param in valid_options)):
-        raise ValueError(f'Invalid parameter {param}. The parameter must be in the list {valid_options}')
+        raise ValueError(f'The parameter "{name_param}" must be in the list {valid_options}')
 
     elif not isinstance(param, expected_type):
-        raise ValueError(f'Invalid parameter. The parameter must be of type {expected_type}')
+        raise ValueError(f'The parameter "{name_param}" must be of type {expected_type}')
+
+    elif isinstance(param, (int, float)) and param <= 0 and name_param != 'noise':
+        raise ValueError(f'The parameter "{name_param}" must be positive number. Value {param} is not supported')
+
+    elif isinstance(param, (int, float)) and param < 0 and name_param == 'noise':
+        raise ValueError(f'The parameter "{name_param}" must be non-negative number. Value {param} is not supported')
 
     else:
         return param
@@ -77,8 +90,7 @@ class BaseLogNNet(object):
                  num_threads=10,
                  num_iterations=10,
                  random_state=42,
-                 shuffle=True,
-                 noise=0):
+                 shuffle=True):
 
         self.input_layer_data = None
         self._LogNNet_global_best_position = None
@@ -87,34 +99,37 @@ class BaseLogNNet(object):
         self.LogNNet_best_params = {}
 
         self._param_ranges = {
-            'num_rows_W': validate_param(input_layer_neurons, int, check_limits=True),
+            'num_rows_W': validate_param(input_layer_neurons, int,
+                                         check_limits=True, name_param='input_layer_neurons'),
             'Zn0': (-499, 499),
             'Cint': (-499, 499),
             'Bint': (-499, 499),
             'Lint': (100, 10000),
-            'first_layer_neurons': validate_param(first_layer_neurons, int, check_limits=True),
-            'hidden_layer_neurons': validate_param(hidden_layer_neurons, int, check_limits=True),
-            'learning_rate': validate_param(learning_rate, float, check_limits=True),
-            'epochs': validate_param(n_epochs, int, check_limits=True),
+            'first_layer_neurons': validate_param(first_layer_neurons, int,
+                                                  check_limits=True, name_param='first_layer_neurons'),
+            'hidden_layer_neurons': validate_param(hidden_layer_neurons, int,
+                                                   check_limits=True, name_param='hidden_layer_neurons'),
+            'learning_rate': validate_param(learning_rate, float,
+                                            check_limits=True, name_param='learning_rate'),
+            'epochs': validate_param(n_epochs, int, check_limits=True, name_param='n_epochs'),
             'prizn': (0, 1),
             'n_f': n_f,
-            'ngen': validate_param(ngen, int, check_limits=True),
-            'noise': validate_param(noise, float, check_limits=True),
+            'ngen': validate_param(ngen, int, check_limits=True, name_param='ngen')
         }
 
         self.basic_params = {
             'X': None,
             'y': None,
-            'num_folds': validate_param(num_folds, int),
+            'num_folds': validate_param(num_folds, int, name_param='num_folds'),
             'param_ranges': self._param_ranges,
             'selected_metric': selected_metric,
             'selected_metric_class': selected_metric_class,
             'dimensions': len(self._param_ranges),
-            'num_particles': validate_param(num_particles, int),
-            'num_threads': validate_param(num_threads, int),
-            'num_iterations': validate_param(num_iterations, int),
-            'random_state': validate_param(random_state, int),
-            'shuffle': validate_param(shuffle, bool),
+            'num_particles': validate_param(num_particles, int, name_param='num_particles'),
+            'num_threads': validate_param(num_threads, int, name_param='num_threads'),
+            'num_iterations': validate_param(num_iterations, int, name_param='num_iterations'),
+            'random_state': validate_param(random_state, int, name_param='random_state'),
+            'shuffle': validate_param(shuffle, bool, name_param='shuffle'),
             'target': None,
             'static_features': None
         }
@@ -176,15 +191,35 @@ class BaseLogNNet(object):
             'Lint': self._LogNNet_global_best_position[4],
             'first_layer_neurons': int(self._LogNNet_global_best_position[5]),
             'hidden_layer_neurons': int(self._LogNNet_global_best_position[6]),
-            'learning_rate': self._LogNNet_global_best_position[7],
+            'learning_rate': float(self._LogNNet_global_best_position[7]),
             'epochs': int(self._LogNNet_global_best_position[8]),
             'prizn': int(self._LogNNet_global_best_position[9]),
             'activation': self._LogNNet_global_best_model.activation,
             'n_f': int(self._LogNNet_global_best_position[10]),
             'ngen': int(self._LogNNet_global_best_position[11]),
-            'noise': float(self._LogNNet_global_best_position[12]),
             'random_state': self._LogNNet_global_best_model.random_state
         }
+
+        params = {
+            'first_layer_neurons': self.LogNNet_best_params['first_layer_neurons'],
+            'hidden_layer_neurons': self.LogNNet_best_params['hidden_layer_neurons'],
+            'activation': 'relu',
+            'learning_rate': self.LogNNet_best_params['learning_rate'],
+            'epochs': self.LogNNet_best_params['epochs'],
+        }
+
+        metrics, self._LogNNet_global_best_model, self.input_layer_data = (
+            testing_model_on_all_data(X=X, y=y, params=params,
+                                      prizn_binary=self.input_layer_data['prizn_binary'],
+                                      W=self.input_layer_data['W'],
+                                      random_state=self.basic_params['random_state'],
+                                      target=self.basic_params['target']))
+
+        res_metric = metrics[self.basic_params['selected_metric']] if (
+                self.basic_params['selected_metric_class'] is None) else (
+            metrics)[self.basic_params['selected_metric']][self.basic_params['selected_metric_class']]
+
+        print(f"Final value metric {self.basic_params['selected_metric']} = {round(res_metric, 5)}")
 
         return self._LogNNet_global_best_model
 
@@ -210,6 +245,7 @@ class BaseLogNNet(object):
         X_new_test = np.dot(X_test_normalized, W.T)
 
         denominator_Sh = np.array(self.input_layer_data['Shmax']) - np.array(self.input_layer_data['Shmin'])
+        denominator_Sh[denominator_Sh == 0] = 1
         X_new_test_Sh = (X_new_test - np.array(self.input_layer_data['Shmin'])) / denominator_Sh - 0.5
 
         return self._LogNNet_global_best_model.predict(X_new_test_Sh)
@@ -297,7 +333,6 @@ class LogNNetRegressor(BaseLogNNet):
                  num_iterations=10,
                  random_state=42,
                  shuffle=True,
-                 noise=(0.0, 0.01),
                  **kwargs):
         """
         Model LogNNet Regression.
@@ -347,8 +382,6 @@ class LogNNetRegressor(BaseLogNNet):
                 reproducibility of results. Default value to 42.
             :param shuffle: (bool, optional): A parameter indicating that the data will be shuffled.
                 Default is True.
-            :param noise: (tuple or float, optional): The parameter containing level noise input data.
-                Default value to (0.0, 0.01)
         """
 
         self.kwargs = kwargs
@@ -356,7 +389,8 @@ class LogNNetRegressor(BaseLogNNet):
 
         selected_metric = validate_param(selected_metric,
                                          expected_type=str,
-                                         valid_options=valid_options) if selected_metric != '' else valid_options[0]
+                                         valid_options=valid_options,
+                                         name_param='selected_metric') if selected_metric != '' else valid_options[0]
 
         super().__init__(
             input_layer_neurons=input_layer_neurons,
@@ -372,8 +406,7 @@ class LogNNetRegressor(BaseLogNNet):
             num_threads=num_threads,
             num_iterations=num_iterations,
             random_state=random_state,
-            shuffle=shuffle,
-            noise=noise)
+            shuffle=shuffle)
 
         self.basic_params['target'] = 'Regressor'
 
@@ -447,15 +480,14 @@ class LogNNetClassifier(BaseLogNNet):
         """
 
         self.kwargs = kwargs
-        valid_options = ["overall_accuracy", "overall_mcc", "overall_precision", "overall_recall",
-                         "overall_f1", "avg_precision", "avg_recall", "avg_f1", "avg_accuracy", "avg_mcc"]
 
-        if selected_metric in ["mcc", "accuracy", "precision", "recall", "f1"]:
-            selected_metric = f"overall_{selected_metric}"
+        valid_options = ["accuracy", "mcc", "precision", "recall", "f1",
+                         "avg_precision", "avg_recall", "avg_f1", "avg_accuracy", "avg_mcc"]
 
         selected_metric = validate_param(selected_metric,
                                          expected_type=str,
-                                         valid_options=valid_options) if selected_metric != '' else valid_options[0]
+                                         valid_options=valid_options,
+                                         name_param='selected_metric') if selected_metric != '' else valid_options[0]
 
         if (any(keyword in selected_metric for keyword in ["precision", "recall", "f1"])
                 and selected_metric_class is None):
