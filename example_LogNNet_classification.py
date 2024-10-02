@@ -28,11 +28,11 @@ input_file = 'Veri_Statlog.csv'
 target_column_input_file = 'Ischemic'
 
 LogNNet_params = {
-    'input_layer_neurons': (10, 90),
+    'input_layer_neurons': (10, 150),
     'first_layer_neurons': (1, 60),
-    'hidden_layer_neurons': (1, 25),
-    'learning_rate': (0.01, 0.5),
-    'n_epochs': (5, 150),
+    'hidden_layer_neurons': (1, 35),
+    'learning_rate_init': (0.001, 0.01),
+    'n_epochs': (5, 550),
     'n_f': -1,
     'ngen': (1, 500),
     'selected_metric': 'accuracy',
@@ -41,8 +41,6 @@ LogNNet_params = {
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
-    'random_state': 42,
-    'shuffle': True
 }
 
 
@@ -100,23 +98,24 @@ def LogNNet_classification(input_data_file: str, target_column: (str, None),
     y_train, y_test = y[:cutoff], y[cutoff:]
 
     model = LogNNetClassifier(**basic_params)
+    print(f'LogNNet library version: {model.__version__()}')
 
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
     metrics = {
-        "mcc": float(round(matthews_corrcoef(y_test, y_pred), 5)),
+        "mcc": float(round(matthews_corrcoef(y_test, y_pred), 8)),
         "precision": precision_score(y_test, y_pred, average=None, zero_division=0),
         "recall": recall_score(y_test, y_pred, average=None, zero_division=0),
         "f1": f1_score(y_test, y_pred, average=None, zero_division=0),
-        "accuracy": float(round(accuracy_score(y_test, y_pred), 5)),
+        "accuracy": float(round(accuracy_score(y_test, y_pred), 8)),
         "conf_matrix": confusion_matrix(y_test, y_pred)
     }
 
     str_metric_class = '' if basic_params['selected_metric_class'] is None \
         else f" [Class {basic_params['selected_metric_class']}]"
     str_value_metric = metrics[basic_params['selected_metric']] if basic_params['selected_metric_class'] is None \
-        else round(metrics[basic_params['selected_metric']][basic_params['selected_metric_class']], 5)
+        else round(metrics[basic_params['selected_metric']][basic_params['selected_metric_class']], 8)
 
     print(f"Final value of the metric '{basic_params['selected_metric']}{str_metric_class}' "
           f"on the test set = {str_value_metric}")
@@ -129,6 +128,7 @@ def LogNNet_classification(input_data_file: str, target_column: (str, None),
         best_params=model.LogNNet_best_params,
         data_filename=input_file_name,
         basic_params=model.basic_params,
+        mlp_params=model.mlp_model.get_params(),
         feature_names=feature_names)
 
     print('Calculation classification finished')
@@ -182,22 +182,20 @@ def read_csv_file(file_name: str, target_column=None, none_value=' ') -> (np.nda
     else:
         col_name = columns[0]
 
-    min_value = data[col_name].min()
-    data[col_name] = data[col_name].apply(lambda x: x - min_value if min_value != 0 else x)
-
     print(f'Classes column name: {col_name}')
     columns.remove(col_name)
     columns.append(col_name)
     data = data[columns]
 
-    y = data.iloc[:, -1].values.astype(float)
-    X = data.iloc[:, :-1].values.astype(float)
+    y = np.array(data.iloc[:, -1]).astype(float)
+    X = np.array(data.iloc[:, :-1]).astype(float)
 
     return X, y, data.columns.tolist()[:-1]
 
 
 def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
-                           data_filename: str, basic_params: dict, feature_names: list) -> int:
+                           data_filename: str, basic_params: dict,
+                           mlp_params: dict, feature_names: list) -> int:
     """
     Prints key results of a model evaluation and saves them to a text file.
 
@@ -206,6 +204,7 @@ def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
         :param best_params: (dict) A dictionary containing the best hyperparameters found during model tuning.
         :param data_filename: (str) The name of the data file used in the evaluation.
         :param basic_params: (dict) A dictionary containing the basic params LogNNet model.
+        :param mlp_params: (dict): A dictionary containing the MLP params LogNNet model.
         :param feature_names: (list) A list of names associated with each feature in the dataset.
         :return: (int) The Unix time (in seconds) at which the results were saved.
     """
@@ -226,13 +225,7 @@ def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
                    f"num_iterations: {basic_params['num_iterations']}\ndimensions: {basic_params['dimensions']}\n"
                    f"selected_metric: {basic_params['selected_metric']}\n"
                    f"selected_metric_class: {basic_params['selected_metric_class']}\n"
-                   f"num_folds: {basic_params['num_folds']}\nrandom_state: {basic_params['random_state']}\n"
-                   f"shuffle: {basic_params['shuffle']}\n\nFeature list: {prizn_binary}\n"
-                   f"Number of features used: {prizn_binary.count('1')}\n\nFeature status:\n")
-
-    for i in range(input_dim):
-        status = "(0)" if prizn_binary[i] == '0' else "(1)"
-        output_str += f"Feature {i + 1} {status}\t{feature_names[i]}\n"
+                   f"num_folds: {basic_params['num_folds']}\n")
 
     output_str += "\nMetrics:\n"
     for key, value in metrics.items():
@@ -247,8 +240,19 @@ def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
         else:
             output_str += f"{key}: {value}\n"
 
+    output_str += (f"\nFeature list: {prizn_binary}\nNumber of features used: {prizn_binary.count('1')}\n"
+                   f"Feature status:\n")
+
+    for i in range(input_dim):
+        status = "(0)" if prizn_binary[i] == '0' else "(1)"
+        output_str += f"Feature {i + 1} {status}\t{feature_names[i]}\n"
+
     output_str += "\nBest parameters:\n"
     output_str += json.dumps(best_params, indent=4)
+
+    if mlp_params is not None:
+        output_str += "\nMLP params:\n"
+        output_str += json.dumps(mlp_params, indent=4)
 
     print(f"Data saved successfully to {filename}")
 

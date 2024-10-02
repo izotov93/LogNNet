@@ -12,6 +12,7 @@ import numpy as np
 import signal
 from LogNNet.mlp_evaluation import evaluate_mlp_mod
 from multiprocessing import cpu_count, Pool
+import random
 
 stop_flag = False
 
@@ -42,13 +43,19 @@ class Particle:
         self.best_model = None
         self.input_layers_data = None
 
+        self.is_random_velocity = False
+
     def update_velocity(self, global_best_position):
-        inertia = 0.5
-        cognitive_component = 2 * np.random.rand(self.dimensions) * (
-                np.array(self.best_position, dtype=float) - np.array(self.position, dtype=float))
-        social_component = 2 * np.random.rand(self.dimensions) * (
-                np.array(global_best_position, dtype=float) - np.array(self.position, dtype=float))
-        self.velocity = inertia * self.velocity + cognitive_component + social_component
+        if self.is_random_velocity:
+            self.velocity = np.random.rand(self.dimensions) - 0.5
+        else:
+            inertia = 0.5
+            cognitive_component = 2 * np.random.rand(self.dimensions) * (
+                    np.array(self.best_position, dtype=float) - np.array(self.position, dtype=float))
+            social_component = 2 * np.random.rand(self.dimensions) * (
+                    np.array(global_best_position, dtype=float) - np.array(self.position, dtype=float))
+            self.velocity = inertia * self.velocity + cognitive_component + social_component
+        self.is_random_velocity = False
 
     def update_position(self, param_ranges):
         self.position = np.array(self.position, dtype=float) + self.velocity
@@ -58,34 +65,20 @@ class Particle:
 
 
 def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
-                     num_folds: int, random_state: int, shuffle: bool,
-                     selected_metric: str, selected_metric_class: int,
-                     target: str, static_features=None) -> (float, object, dict):
+                     num_folds: int, selected_metric: str, selected_metric_class: int,
+                     target: str, mlp_params: dict, static_features=None) -> (float, object, dict):
     """
     Evaluate the fitness of a particle based on a machine learning model's performance.
 
         :param particle_position: (list or array-like): A list or array that contains the
-                    hyperparameters of the model. The following indices are expected:
-            - [0] : Number of rows in matrix W
-            - [1] : Zn0 parameter
-            - [2] : Cint parameter
-            - [3] : Bint parameter
-            - [4] : Lint parameter
-            - [5] : Number of neurons in the first layer
-            - [6] : Number of neurons in the hidden layer
-            - [7] : Learning rate
-            - [8] : Number of epochs
-            - [9] : Prizn parameter
-            - [10] : n_f parameter
-            - [11] : ngen parameter
+                    hyperparameters of the model.
         :param X: (np.ndarray): The input features dataset.
         :param y: (np.ndarray): The target values (class labels in classification, real numbers in regression).
         :param num_folds: (int): The number of folds to use for cross-validation.
-        :param random_state: (int): Controls the randomness of the model evaluation.
-        :param shuffle: (bool): Whether to shuffle the data before splitting into batches.
         :param selected_metric: (str): The metric to be used for evaluating the model performance.
         :param selected_metric_class: (int): Identifies the target class for multi-class classification metrics.
         :param target: (str): The type of  task: 'Regressor' for regression or 'Classifier' for classification.
+        :param mlp_params: (dict): A dictionary containing the mlp parameters.
         :param static_features: (list or None, optional): The static features to be used in the model
         :return: (tuple): A tuple containing the params:
                 - res_metric : (float) The value of the selected metric indicating the fitness of
@@ -95,12 +88,13 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                         including weights W and other normalization parameters.
     """
     params = {
-        'first_layer_neurons': int(particle_position[5]),
-        'hidden_layer_neurons': int(particle_position[6]),
-        'activation': 'relu',
-        'learning_rate': float(particle_position[7]),
-        'epochs': int(particle_position[8]),
+        'hidden_layer_sizes': (int(particle_position[5]), int(particle_position[6])),
+        'learning_rate_init': float(particle_position[7]),
+        'max_iter': int(particle_position[8])
     }
+
+    if mlp_params is not None:
+        params.update(mlp_params)
 
     metrics, model, input_layers_data = evaluate_mlp_mod(X, y, params, num_folds=num_folds,
                                                          num_rows_W=int(particle_position[0]),
@@ -108,8 +102,6 @@ def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
                                                          Cint=particle_position[2],
                                                          Bint=particle_position[3],
                                                          Lint=particle_position[4],
-                                                         shuffle=shuffle,
-                                                         random_state=random_state,
                                                          prizn=int(particle_position[9]),
                                                          n_f=int(particle_position[10]),
                                                          ngen=int(particle_position[11]),
@@ -131,14 +123,14 @@ def optimize_particle(args) -> Particle:
                     best position, and related model information.
     """
 
-    (particle, global_best_position, param_ranges, X, y, num_folds, random_state, shuffle,
-     selected_metric, selected_metric_class, target, static_features) = args
+    (particle, global_best_position, param_ranges, X, y, num_folds,
+     selected_metric, selected_metric_class, target, mlp_params, static_features) = args
 
     particle.update_velocity(global_best_position)
     particle.update_position(param_ranges)
     particle.fitness, model, input_layers_data = fitness_function(particle.position, X, y, num_folds,
-                                                                  random_state, shuffle, selected_metric,
-                                                                  selected_metric_class, target, static_features)
+                                                                  selected_metric, selected_metric_class,
+                                                                  target, mlp_params, static_features)
 
     if selected_metric in ['mse', 'mae', 'rmse']:
         is_better = (particle.best_fitness is None or particle.fitness < particle.best_fitness)
@@ -157,8 +149,7 @@ def optimize_particle(args) -> Particle:
 def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         selected_metric: str, selected_metric_class: (int, None), dimensions: int,
         num_particles: int, num_iterations: int, num_threads=cpu_count(),
-        random_state=42, shuffle=True, target='Regressor',
-        static_features=(list, None)) -> (np.ndarray, float, object, dict):
+        target='Regressor', mlp_params=None, static_features=(list, None)) -> (np.ndarray, float, object, dict):
     """
     Performs Particle Swarm Optimization (PSO) for hyperparameter tuning of LogNNet models.
 
@@ -178,12 +169,9 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         :param num_iterations: (int): The number of iterations for the optimization process.
         :param num_threads: (int, optional): he number of threads to use for parallel execution.
             Default is the number of CPU cores.
-        :param random_state: (int, optional): Seed for random number generation to ensure reproducibility.
-            Default is 42.
-        :param shuffle: (bool, optional):  Whether to shuffle the data before splitting into folds
-            for cross-validation. Default is True.
         :param target: (str, optional): The type of  task: 'Regressor' for regression or
             'Classifier' for classification. Default is 'Regressor'.
+        :param mlp_params: (dict): A dictionary containing the mlp parameters.
         :param static_features: (None or list, optional): -
         :return: (tuple): A tuple containing the params:
             - global_best_position: (np.ndarray): The best set of hyperparameters found during optimization.
@@ -192,6 +180,8 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
             - input_layers_data : (dict): Data related to the input layers,
                 including weights W and other normalization parameters.
     """
+
+    rand_particles = int(0.2 * num_particles)
 
     particles = [Particle(param_ranges) for _ in range(num_particles)]
     global_best_position = np.random.rand(dimensions)
@@ -208,10 +198,13 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
                 break
 
             args_list = [(particle, global_best_position, param_ranges, X, y, num_folds,
-                          random_state, shuffle, selected_metric, selected_metric_class,
-                          target, static_features) for particle in particles]
+                          selected_metric, selected_metric_class, target,
+                          mlp_params, static_features) for particle in particles]
 
             results = pool.map(optimize_particle, args_list)
+
+            for i in random.sample(range(len(results)), rand_particles):
+                results[i].is_random_velocity = True
 
             for particle in results:
                 if selected_metric in ["mse", "mae", "rmse"]:
@@ -225,7 +218,7 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
                     global_best_model = particle.best_model
                     input_layers_data = particle.input_layers_data
 
-            print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness in fold: {round(global_best_fitness, 4)}")
+            print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 6)}")
 
         pool.close()
         pool.join()

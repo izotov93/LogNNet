@@ -74,29 +74,67 @@ def validate_param(param: (tuple, int, float, str, bool, None),
         return param
 
 
+def validate_dict_mlp_param(input_dict: dict) -> (dict, None):
+    if not isinstance(input_dict, dict):
+        return None
+    else:
+        default_params = {
+            'activation': 'relu',
+            'solver': 'adam',
+            'alpha': 0.0001,
+            'batch_size': 'auto',
+            'learning_rate': 'constant',
+            'power_t': 0.5,
+            'shuffle': True,
+            'random_state': None,
+            'tol': 1e-04,
+            'verbose': False,
+            'warm_start': False,
+            'momentum': 0.9,
+            'nesterovs_momentum': True,
+            'early_stopping': False,
+            'validation_fraction': 0.1,
+            'beta_1': 0.9,
+            'beta_2': 0.999,
+            'epsilon': 1e-08,
+            'n_iter_no_change': 10,
+            'max_fun': 15000
+        }
+        validated_params = {}
+
+        for key, default_value in default_params.items():
+            if key in input_dict and input_dict[key] != default_value:
+                validated_params[key] = input_dict[key]
+
+        return validated_params
+
+
 class BaseLogNNet(object):
+    lib_version = '1.4'
+
     def __init__(self,
-                 input_layer_neurons=(10, 90),
-                 first_layer_neurons=(1, 60),
-                 hidden_layer_neurons=(1, 25),
-                 learning_rate=(0.01, 0.5),
-                 n_epochs=(5, 150),
-                 n_f=-1,
-                 ngen=(1, 500),
-                 selected_metric='',
-                 selected_metric_class=None,
-                 num_folds=5,
-                 num_particles=10,
-                 num_threads=10,
-                 num_iterations=10,
-                 random_state=42,
-                 shuffle=True):
+                 input_layer_neurons: (tuple, int),
+                 first_layer_neurons: (tuple, int),
+                 hidden_layer_neurons: (tuple, int),
+                 learning_rate_init: (tuple, float),
+                 n_epochs: (tuple, int),
+                 n_f: (tuple, int),
+                 ngen: (tuple, int),
+                 selected_metric: str,
+                 selected_metric_class: (None, int),
+                 num_folds: int,
+                 num_particles: int,
+                 num_threads: int,
+                 num_iterations: int,
+                 **kwargs):
 
         self.input_layer_data = None
         self._LogNNet_global_best_position = None
         self._LogNNet_global_best_fitness = None
-        self._LogNNet_global_best_model = None
+        self.mlp_model = None
         self.LogNNet_best_params = {}
+
+        self.mlp_params = validate_dict_mlp_param(kwargs)
 
         self._param_ranges = {
             'num_rows_W': validate_param(input_layer_neurons, int,
@@ -109,8 +147,8 @@ class BaseLogNNet(object):
                                                   check_limits=True, name_param='first_layer_neurons'),
             'hidden_layer_neurons': validate_param(hidden_layer_neurons, int,
                                                    check_limits=True, name_param='hidden_layer_neurons'),
-            'learning_rate': validate_param(learning_rate, float,
-                                            check_limits=True, name_param='learning_rate'),
+            'learning_rate_init': validate_param(learning_rate_init, float,
+                                                 check_limits=True, name_param='learning_rate_init'),
             'epochs': validate_param(n_epochs, int, check_limits=True, name_param='n_epochs'),
             'prizn': (0, 1),
             'n_f': n_f,
@@ -128,11 +166,13 @@ class BaseLogNNet(object):
             'num_particles': validate_param(num_particles, int, name_param='num_particles'),
             'num_threads': validate_param(num_threads, int, name_param='num_threads'),
             'num_iterations': validate_param(num_iterations, int, name_param='num_iterations'),
-            'random_state': validate_param(random_state, int, name_param='random_state'),
-            'shuffle': validate_param(shuffle, bool, name_param='shuffle'),
             'target': None,
-            'static_features': None
+            'static_features': None,
+            'mlp_params': self.mlp_params
         }
+
+    def __version__(self):
+        return self.lib_version
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> (MLPRegressor, MLPClassifier):
         """
@@ -181,7 +221,7 @@ class BaseLogNNet(object):
         self.basic_params['param_ranges'] = self._param_ranges
 
         (self._LogNNet_global_best_position, self._LogNNet_global_best_fitness,
-         self._LogNNet_global_best_model, self.input_layer_data) = PSO(**self.basic_params)
+         self.mlp_model, self.input_layer_data) = PSO(**self.basic_params)
 
         self.LogNNet_best_params = {
             'num_rows_W': int(self._LogNNet_global_best_position[0]),
@@ -191,37 +231,35 @@ class BaseLogNNet(object):
             'Lint': self._LogNNet_global_best_position[4],
             'first_layer_neurons': int(self._LogNNet_global_best_position[5]),
             'hidden_layer_neurons': int(self._LogNNet_global_best_position[6]),
-            'learning_rate': float(self._LogNNet_global_best_position[7]),
+            'learning_rate_init': float(self._LogNNet_global_best_position[7]),
             'epochs': int(self._LogNNet_global_best_position[8]),
             'prizn': int(self._LogNNet_global_best_position[9]),
-            'activation': self._LogNNet_global_best_model.activation,
             'n_f': int(self._LogNNet_global_best_position[10]),
             'ngen': int(self._LogNNet_global_best_position[11]),
-            'random_state': self._LogNNet_global_best_model.random_state
         }
 
         params = {
-            'first_layer_neurons': self.LogNNet_best_params['first_layer_neurons'],
-            'hidden_layer_neurons': self.LogNNet_best_params['hidden_layer_neurons'],
-            'activation': 'relu',
-            'learning_rate': self.LogNNet_best_params['learning_rate'],
-            'epochs': self.LogNNet_best_params['epochs'],
+            'hidden_layer_sizes': (self.LogNNet_best_params['first_layer_neurons'],
+                                   self.LogNNet_best_params['hidden_layer_neurons']),
+            'learning_rate_init': self.LogNNet_best_params['learning_rate_init'],
+            'max_iter': self.LogNNet_best_params['epochs'],
         }
+        if self.mlp_params is not None:
+            params.update(self.mlp_params)
 
-        metrics, self._LogNNet_global_best_model, self.input_layer_data = (
+        metrics, self.mlp_model, self.input_layer_data = (
             testing_model_on_all_data(X=X, y=y, params=params,
                                       prizn_binary=self.input_layer_data['prizn_binary'],
                                       W=self.input_layer_data['W'],
-                                      random_state=self.basic_params['random_state'],
                                       target=self.basic_params['target']))
 
         res_metric = metrics[self.basic_params['selected_metric']] if (
                 self.basic_params['selected_metric_class'] is None) else (
             metrics)[self.basic_params['selected_metric']][self.basic_params['selected_metric_class']]
 
-        print(f"Final value metric {self.basic_params['selected_metric']} = {round(res_metric, 5)}")
+        print(f"Final value metric {self.basic_params['selected_metric']} = {round(res_metric, 6)}")
 
-        return self._LogNNet_global_best_model
+        return self.mlp_model
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -230,7 +268,7 @@ class BaseLogNNet(object):
             :return: (np.ndarray): The predicted classes.
         """
 
-        if self.input_layer_data is None or self._LogNNet_global_best_model is None:
+        if self.input_layer_data is None or self.mlp_model is None:
             raise Exception("The LogNNet neural network model is not trained. "
                             "Use the 'FIT' function before using the 'PREDICT' function.")
 
@@ -248,7 +286,7 @@ class BaseLogNNet(object):
         denominator_Sh[denominator_Sh == 0] = 1
         X_new_test_Sh = (X_new_test - np.array(self.input_layer_data['Shmin'])) / denominator_Sh - 0.5
 
-        return self._LogNNet_global_best_model.predict(X_new_test_Sh)
+        return self.mlp_model.predict(X_new_test_Sh)
 
     def export_model(self, type_of_model='max'):
         """
@@ -266,7 +304,7 @@ class BaseLogNNet(object):
                     to ensure uniqueness, formatted as '{timestamp}_LogNNet_model_{type_of_model}.joblib'
         """
         if type_of_model == 'max':
-            value = {'model': self._LogNNet_global_best_model,
+            value = {'model': self.mlp_model,
                      'model_params': self._LogNNet_global_best_position,
                      'input_layer_data': self.input_layer_data}
         elif type_of_model == 'min':
@@ -282,8 +320,8 @@ class BaseLogNNet(object):
                 'X_train_max': self.input_layer_data['X_train_max'],
                 'X_train_min': self.input_layer_data['X_train_min']
             }
-            value = {'coefs': self._LogNNet_global_best_model.coefs_,
-                     'bias': self._LogNNet_global_best_model.intercepts_,
+            value = {'coefs': self.mlp_model.coefs_,
+                     'bias': self.mlp_model.intercepts_,
                      'input_layers_params': params_reservoir}
         else:
             raise ValueError('Param "type_of_model" is not correct. Valid options: "min" or "max"')
@@ -309,7 +347,7 @@ class BaseLogNNet(object):
         model_data = joblib.load(file_model_name)
 
         if model_data['model'] is not None:
-            self._LogNNet_global_best_model = model_data['model']
+            self.mlp_model = model_data['model']
             self._LogNNet_global_best_position = model_data['model_params']
             self.input_layer_data = model_data['input_layer_data']
         elif model_data['coefs'] is not None and model_data['bias'] is not None:
@@ -319,34 +357,33 @@ class BaseLogNNet(object):
 
 class LogNNetRegressor(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 90),
+                 input_layer_neurons=(10, 150),
                  first_layer_neurons=(1, 60),
-                 hidden_layer_neurons=(1, 25),
-                 learning_rate=(0.01, 0.5),
-                 n_epochs=(5, 150),
+                 hidden_layer_neurons=(1, 35),
+                 learning_rate_init=(0.001, 0.01),
+                 n_epochs=(5, 550),
                  n_f=-1,
                  ngen=(1, 500),
                  selected_metric='r2',
-                 num_folds=5,
+                 num_folds=1,
                  num_particles=10,
                  num_threads=10,
                  num_iterations=10,
-                 random_state=42,
-                 shuffle=True,
                  **kwargs):
         """
         Model LogNNet Regression.
 
             :param input_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of rows in the reservoir. Default value to (10, 70).
+                the number of rows in the reservoir. Default value to (10, 150).
             :param first_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the first hidden layer. Default value to (1, 40).
+                the number of neurons in the first hidden layer. Default value to (1, 60).
             :param hidden_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the hidden layer. Default value to (1, 15).
-            :param learning_rate: (array-like of float or singular float value, optional): The range of learning rate
-                values that the optimizer will use to adjust the model's parameters. Default value to (0.05, 0.5).
+                the number of neurons in the hidden layer. Default value to (1, 35).
+            :param learning_rate_init: (array-like of float or singular float value, optional):
+                The range of learning rate values that the optimizer will use to adjust the model's parameters.
+                Default value to (0.001, 0.01).
             :param n_epochs: (array-like of int or singular int value, optional): The range of the number of epochs
-                for which the model will be trained. Default value to (5, 150).
+                for which the model will be trained. Default value to (5, 550).
             :param n_f: (array-like of int or singular int value, optional): This parameter defines the conditions
                 for selecting features in the input vector. It supports three types of input:
                     1. A list of specific feature indices (e.g., [1, 2, 10] means only features at
@@ -359,7 +396,7 @@ class LogNNetRegressor(BaseLogNNet):
                 Default value -1.
             :param ngen: (array-like of int or singular int value, optional): The range of generations for
                 the optimization algorithm that will be used to find the optimal model parameters.
-                Default value to (1, 100).
+                Default value to (1, 500).
             :param selected_metric: (str, optional): The selected metric for evaluating the model's performance.
                 Support metrics:
                     1. 'r2': R-squared score indicating the proportion of variance explained by the model.
@@ -371,17 +408,13 @@ class LogNNetRegressor(BaseLogNNet):
                     5. 'rmse': Root Mean Squared Error indicating the square root of the average squared differences.
                 Default value to 'r2'.
             :param num_folds: (int, optional): The number of folds for cross-validation of the model.
-                Default value to 5.
+                Default value to 1.
             :param num_particles: (int, optional): The number of particles in the Particle Swarm Optimization (PSO)
                 method, used for parameter optimization. Default value to 10.
             :param num_threads: (int, optional): The number of threads to be used during model training for
                 parallel data processing. Default value to 10.
             :param num_iterations: (int, optional): The number of iterations of the optimization algorithm.
                 Default value to 10.
-            :param random_state: (int, optional): A fixed seed for the random number generator, ensuring the
-                reproducibility of results. Default value to 42.
-            :param shuffle: (bool, optional): A parameter indicating that the data will be shuffled.
-                Default is True.
         """
 
         self.kwargs = kwargs
@@ -396,52 +429,51 @@ class LogNNetRegressor(BaseLogNNet):
             input_layer_neurons=input_layer_neurons,
             first_layer_neurons=first_layer_neurons,
             hidden_layer_neurons=hidden_layer_neurons,
-            learning_rate=learning_rate,
+            learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
             ngen=ngen,
             selected_metric=selected_metric,
+            selected_metric_class=None,
             num_folds=num_folds,
             num_particles=num_particles,
             num_threads=num_threads,
             num_iterations=num_iterations,
-            random_state=random_state,
-            shuffle=shuffle)
+            **kwargs)
 
         self.basic_params['target'] = 'Regressor'
 
 
 class LogNNetClassifier(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 90),
+                 input_layer_neurons=(10, 150),
                  first_layer_neurons=(1, 60),
-                 hidden_layer_neurons=(1, 25),
-                 learning_rate=(0.01, 0.5),
-                 n_epochs=(5, 150),
+                 hidden_layer_neurons=(1, 35),
+                 learning_rate_init=(0.001, 0.01),
+                 n_epochs=(5, 550),
                  n_f=-1,
                  ngen=(1, 500),
                  selected_metric='accuracy',
                  selected_metric_class=None,
-                 num_folds=5,
+                 num_folds=1,
                  num_particles=10,
                  num_threads=10,
                  num_iterations=10,
-                 random_state=42,
-                 shuffle=True,
                  **kwargs):
         """
         LogNNet classification class
 
             :param input_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of rows in the reservoir. Default value to (10, 70).
+                the number of rows in the reservoir. Default value to (10, 150).
             :param first_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the first hidden layer. Default value to (1, 40).
+                the number of neurons in the first hidden layer. Default value to (1, 60).
             :param hidden_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the hidden layer. Default value to (1, 15).
-            :param learning_rate: (array-like of float or singular float value, optional): The range of learning rate
-                values that the optimizer will use to adjust the model's parameters. Default value to (0.05, 0.5).
+                the number of neurons in the hidden layer. Default value to (1, 35).
+            :param learning_rate_init: (array-like of float or singular float value, optional): The range of
+                learning rate values that the optimizer will use to adjust the model's parameters.
+                Default value to (0.001, 0.01).
             :param n_epochs: (array-like of int or singular int value, optional): The range of the number of epochs
-                for which the model will be trained. Default value to (5, 150).
+                for which the model will be trained. Default value to (5, 550).
             :param n_f: (array-like of int or singular int value, optional): This parameter defines the conditions
                 for selecting features in the input vector. It supports three types of input:
                     1. A list of specific feature indices (e.g., [1, 2, 10] means only features at
@@ -454,7 +486,7 @@ class LogNNetClassifier(BaseLogNNet):
                 Default value to -1.
             :param ngen: (array-like of int or singular int value, optional): The range of generations for the
                 optimization algorithm that will be used to find the optimal model parameters.
-                Default value to (1, 100).
+                Default value to (1, 500).
             :param selected_metric: (str, optional): The selected metric for evaluating the model's performance.
                 Support metrics:
                 1. 'mcc': Matthews Correlation Coefficient indicating classification quality.
@@ -466,17 +498,13 @@ class LogNNetClassifier(BaseLogNNet):
             :param selected_metric_class: (int or None, optional): Select a class for training model.
                 Default is None.
             :param num_folds: (int, optional): The number of folds for cross-validation of the model.
-                Default value to 5.
+                Default value to 1.
             :param num_particles: (int, optional): The number of particles in the Particle Swarm Optimization (PSO)
                 method, used for parameter optimization. Default value to 10.
             :param num_threads: (int, optional): The number of threads to be used during model training for
                 parallel data processing. Default value to 10.
             :param num_iterations: (int, optional): The number of iterations of the optimization algorithm.
                 Default value to 10.
-            :param random_state: (int, optional): A fixed seed for the random number generator, ensuring the
-                reproducibility of results. Default value to 42.
-            :param shuffle: (bool, optional): A parameter indicating that the data will be shuffled.
-                Default is True.
         """
 
         self.kwargs = kwargs
@@ -499,7 +527,7 @@ class LogNNetClassifier(BaseLogNNet):
             input_layer_neurons=input_layer_neurons,
             first_layer_neurons=first_layer_neurons,
             hidden_layer_neurons=hidden_layer_neurons,
-            learning_rate=learning_rate,
+            learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
             ngen=ngen,
@@ -509,8 +537,8 @@ class LogNNetClassifier(BaseLogNNet):
             num_particles=num_particles,
             num_threads=num_threads,
             num_iterations=num_iterations,
-            random_state=random_state,
-            shuffle=shuffle)
+            **kwargs
+        )
 
         self.basic_params['target'] = 'Classifier'
 

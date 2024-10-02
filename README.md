@@ -34,7 +34,7 @@ pip install --upgrade LogNNet
 
 ## Parameters
 
-1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 90)
+1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 150)
 
 This element represents the number of neurons in the input layer. It can be specified as a range for optimization in the PSO method (e.g., (10, 90)) or as a specific number.
 
@@ -42,15 +42,15 @@ This element represents the number of neurons in the input layer. It can be spec
 
 This element represents the number of neurons in the first hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 60)) or as a specific number.
 
-3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 25)
+3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 35)
 
 The element represents the number of neurons in the second hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 25)) or as a specific number.
 
-4. `learning_rate` (array-like of float or singular float value, optional), default=(0.01, 0.5)
+4. `learning_rate` (array-like of float or singular float value, optional), default=(0.001, 0.01)
 
 The range of learning rate values that the optimizer will use to adjust the model's parameters.
 
-5. `n_epochs` (array-like of int or singular int value, optional), default=(5, 150)
+5. `n_epochs` (array-like of int or singular int value, optional), default=(5, 550)
 
 The range of the number of epochs (complete passes through the training dataset) for which the model will be trained.
 
@@ -83,12 +83,12 @@ For classification (LogNNetClassifier model), input of the following metrics is 
 * 'f1': F1 score.
 * 'accuracy': Accuracy score of the classifier. (default)
 
-9.`selected_metric_class` (int or None, optional) Default is None
+9. `selected_metric_class` (int or None, optional) Default is None
 
 Select a class metric for training model. Supports input of the following metrics precision, recall and f1 for the LogNNetClassifier class.
 **When using LogNNetRegressor model is not used.**
 
-10. `num_folds` (int value, optional), default=5
+10. `num_folds` (int value, optional), default=1
 
 The number of folds for cross-validation of the model.
 
@@ -104,13 +104,8 @@ The number of threads to be used during model training for parallel data process
 
 The number of iterations of the optimization algorithm.
 
-14. `random_state` (int value, optional), default=42
 
-A fixed seed for the random number generator, ensuring the reproducibility of results.
-
-15. `shuffle` (bool value, optional), default=True
-
-A parameter indicating that the data will be shuffled before splitting into training and testing sets.
+*- manual input of MLP model parameters from the scikit-learn library is supported.
 
 ## Usage
 
@@ -124,20 +119,18 @@ from LogNNet.neural_network import LogNNetRegressor
 ...
 
 model = LogNNetRegressor(
-                input_layer_neurons=(10, 90),
+                input_layer_neurons=(10, 150),
                 first_layer_neurons=(1, 60),
-                hidden_layer_neurons=(1, 25),
-                learning_rate=(0.01, 0.5),
-                n_epochs=(5, 150),
+                hidden_layer_neurons=(1, 35),
+                learning_rate=(0.001, 0.01),
+                n_epochs=(5, 550),
                 n_f=-1,
                 ngen=(1, 500),
                 selected_metric='r2',
-                num_folds=5, 
+                num_folds=1, 
                 num_particles=10,
                 num_threads=10,
-                num_iterations=10, 
-                random_state=42,
-                shuffle=True)
+                num_iterations=10)
                 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
@@ -156,21 +149,19 @@ from LogNNet.neural_network import LogNNetClassifier
 ...
 
 model = LogNNetClassifier(
-                input_layer_neurons=(10, 90),
+                input_layer_neurons=(10, 150),
                 first_layer_neurons=(1, 60),
-                hidden_layer_neurons=(1, 25),
-                learning_rate=(0.01, 0.5),
-                n_epochs=(5, 150),
+                hidden_layer_neurons=(1, 35),
+                learning_rate=(0.001, 0.01),
+                n_epochs=(5, 550),
                 n_f=-1,
                 ngen=(1, 500),
                 selected_metric='accuracy',
                 selected_metric_class=None,
-                num_folds=5, 
+                num_folds=1, 
                 num_particles=10,
                 num_threads=10,
-                num_iterations=10, 
-                random_state=42,
-                shuffle=True)
+                num_iterations=10)
                 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)

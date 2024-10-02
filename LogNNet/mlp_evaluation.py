@@ -16,7 +16,7 @@ from LogNNet import utility
 
 
 def evaluate_mlp_regressor(X_train: np.ndarray, X_test: np.ndarray,
-                           y_train: np.ndarray, params: dict, random_state: int) -> (np.ndarray, MLPRegressor):
+                           y_train: np.ndarray, params: dict) -> (np.ndarray, MLPRegressor):
     """
     Train and evaluate a Multi-layer Perceptron (MLP) regressor.
 
@@ -28,23 +28,12 @@ def evaluate_mlp_regressor(X_train: np.ndarray, X_test: np.ndarray,
         :param X_test: (np.ndarray): The input features for testing the model. Shape: (n_samples, n_features).
         :param y_train: (np.ndarray): The target values for training the model. Shape: (n_samples,).
         :param params: (dict): A dictionary containing configuration parameters for the MLP regressor.
-                Expected keys include:
-                - 'first_layer_neurons': Number of neurons in the first hidden layer.
-                - 'hidden_layer_neurons': Number of neurons in the second hidden layer.
-                - 'activation': Activation function for the hidden layer ('relu', 'tanh', etc.).
-                - 'learning_rate': Initial learning rate for weight updates.
-                - 'epochs': The maximum number of iterations for training.
-        :param random_state: (int): Controls the randomness of the model. Can be any integer value.
         :return: tuple: A tuple containing:
             - y_pred (np.ndarray): Predicted target values for the test set.
             - model (MLPRegressor): The trained MLP model instance.
     """
 
-    model = MLPRegressor(hidden_layer_sizes=(params['first_layer_neurons'],
-                                             params['hidden_layer_neurons']),
-                         activation=params['activation'],
-                         learning_rate_init=params['learning_rate'],
-                         max_iter=params['epochs'], random_state=random_state, tol=1e-3)
+    model = MLPRegressor(**params)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
@@ -52,7 +41,7 @@ def evaluate_mlp_regressor(X_train: np.ndarray, X_test: np.ndarray,
 
 
 def evaluate_mlp_classifier(X_train: np.ndarray, X_test: np.ndarray,
-                            y_train: np.ndarray, params: dict, random_state: int) -> (np.ndarray, MLPClassifier):
+                            y_train: np.ndarray, params: dict) -> (np.ndarray, MLPClassifier):
     """
     Train and evaluate a Multi-layer Perceptron (MLP) classifier.
 
@@ -63,23 +52,12 @@ def evaluate_mlp_classifier(X_train: np.ndarray, X_test: np.ndarray,
         :param X_test: (np.ndarray): The input features for testing the model. Shape: (n_samples, n_features).
         :param y_train: (np.ndarray): The target values for training the model. Shape: (n_samples,).
         :param params: (dict): A dictionary containing configuration parameters for the MLP regressor.
-            Expected keys include:
-            - 'first_layer_neurons': Number of neurons in the first hidden layer.
-            - 'hidden_layer_neurons': Number of neurons in the second hidden layer.
-            - 'activation': Activation function for the hidden layer ('relu', 'tanh', etc.).
-            - 'learning_rate': Initial learning rate for weight updates.
-            - 'epochs': The maximum number of iterations for training.
-        :param random_state: (int): Controls the randomness of the model. Can be any integer value.
         :return: tuple: A tuple containing:
             - y_pred (np.ndarray): Predicted target values for the test set.
             - model (MLPClassifier): The trained MLP model instance.
     """
 
-    model = MLPClassifier(hidden_layer_sizes=(params['first_layer_neurons'],
-                                              params['hidden_layer_neurons']),
-                          activation=params['activation'],
-                          learning_rate_init=params['learning_rate'],
-                          max_iter=params['epochs'], random_state=random_state, tol=1e-3)
+    model = MLPClassifier(**params)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
@@ -175,12 +153,12 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, params: dict, num_folds=5, nu
         X_new_test_Sh = (X_new_test - Shmin) / denominator_Sh - 0.5
 
         if target == 'Regressor':
-            y_pred, model = evaluate_mlp_regressor(X_new_train_Sh, X_new_test_Sh, y_train, params, random_state)
+            y_pred, model = evaluate_mlp_regressor(X_new_train_Sh, X_new_test_Sh, y_train, params)
 
             all_y_true.extend(y_test)
             all_y_pred.extend(y_pred)
         elif target == 'Classifier':
-            y_pred, model = evaluate_mlp_classifier(X_new_train_Sh, X_new_test_Sh, y_train, params, random_state)
+            y_pred, model = evaluate_mlp_classifier(X_new_train_Sh, X_new_test_Sh, y_train, params)
 
             all_y_true.extend(y_test)
             all_y_pred.extend(y_pred)
@@ -212,8 +190,8 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, params: dict, num_folds=5, nu
     return metrics, model, input_layers_data
 
 
-def testing_model_on_all_data(X: np.ndarray, y: np.ndarray, params: dict, prizn_binary: str,
-                              W: np.ndarray, random_state=42, target='Regressor'):
+def testing_model_on_all_data(X: np.ndarray, y: np.ndarray, params: dict,
+                              prizn_binary: str, W: np.ndarray, target='Regressor'):
     """
     Test the trained MLP model on the entire dataset.
 
@@ -257,16 +235,18 @@ def testing_model_on_all_data(X: np.ndarray, y: np.ndarray, params: dict, prizn_
     X_new_train_Sh = (X_new_train - Shmin) / denominator_Sh - 0.5
 
     if target == 'Regressor':
-        y_pred, model = evaluate_mlp_regressor(X_new_train_Sh, X_new_train_Sh, y, params, random_state)
+        y_pred, model = evaluate_mlp_regressor(X_new_train_Sh, X_new_train_Sh, y, params)
 
         metrics = utility.calculate_metrics_for_regressor(y, y_pred)
 
     elif target == 'Classifier':
-        y_pred, model = evaluate_mlp_classifier(X_new_train_Sh, X_new_train_Sh, y, params, random_state)
-        precision, recall, f1, _ = precision_recall_fscore_support(y, y_pred, average=None, zero_division=0)
+        y_pred, model = evaluate_mlp_classifier(X_new_train_Sh, X_new_train_Sh, y, params)
+        precision, recall, f1, _ = precision_recall_fscore_support(y, y_pred, average=None,
+                                                                   zero_division=0)
 
         metrics = utility.calculate_metrics_for_classifier(y, y_pred, matthews_corrcoef(y, y_pred),
-                                                           precision, recall, f1, accuracy_score(y, y_pred))
+                                                           precision, recall, f1,
+                                                           accuracy_score(y, y_pred))
 
     input_layers_data = {
         'W': W,
