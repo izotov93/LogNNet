@@ -31,41 +31,38 @@ To update installed package to their latest versions, use the ```--upgrade``` op
 ```shell
 pip install --upgrade LogNNet
 ```
+We recommend using a virtual environment.
 
 ## Parameters
 
-1. `input_layer_neurons` (array-like of int or singular int value, optional), default=(10, 150)
+1. `num_rows_W` (tuple of int or singular int value, optional), default=(10, 150)
 
-This element represents the number of neurons in the input layer. It can be specified as a range for optimization in the PSO method (e.g., (10, 90)) or as a specific number.
+This element represents the number of rows in the reservoir. [PSO]
 
-2. `first_layer_neurons` (array-like of int or singular int value, optional), optional, default=(1, 60)
+2. `limit_hidden_layers` (tuple of int, tuple of tuple or singular int value, optional), optional, default=((1, 60), (1, 35))
 
-This element represents the number of neurons in the first hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 60)) or as a specific number.
+This element represents the number of neurons in the hidden layers. [PSO]
 
-3. `hidden_layer_neuron` (array-like of int or singular int value, optional), default=(1, 35)
+3. `learning_rate` (tuple of float or singular float value, optional), default=(0.001, 0.1)
 
-The element represents the number of neurons in the second hidden layer. It can be specified as a range for optimization in the PSO method (e.g., (1, 25)) or as a specific number.
+The range of learning rate values that the optimizer will use to adjust the model's parameters. [PSO]
 
-4. `learning_rate` (array-like of float or singular float value, optional), default=(0.001, 0.01)
+4. `n_epochs` (tuple of int or singular int value, optional), default=(5, 550)
 
-The range of learning rate values that the optimizer will use to adjust the model's parameters.
+The range of the number of epochs (complete passes through the training dataset) for which the model will be trained. [PSO]
 
-5. `n_epochs` (array-like of int or singular int value, optional), default=(5, 550)
+5. `n_f` (array-like of int or singular int value, optional), default=-1
 
-The range of the number of epochs (complete passes through the training dataset) for which the model will be trained.
-
-6. `n_f` (array-like of int or singular int value, optional), default=-1
-
-This parameter defines the conditions for selecting features in the input vector. It supports three types of input:
+This parameter defines the conditions for selecting features in the input vector. It supports three types of input: 
 * A list of specific feature indices (e.g., [1, 2, 10] means only features at indices 1, 2, and 10 will be used).
 * A range of feature indices as a tuple (e.g., (1, 100) means the PSO method will determine the best features from index 1 to 100).
 * A single integer indicating the number of features to be used (e.g., 20 means the PSO method will select the best combination of 20 features). If set to -1, all features from the input vector will be used.
 
-7. `ngen` (array-like of int or singular int value, optional), default=(1, 500)
+6. `ngen` (tuple of int or singular int value, optional), default=(1, 500)
 
-The range of generations for the optimization algorithm that will be used to find the optimal model parameters.
+The range of generations for the optimization algorithm that will be used to find the optimal model parameters. [PSO]
 
-8. `selected_metric` (str value) 
+7. `selected_metric` (str value) 
 
 The selected metric for evaluating the model's performance.
 
@@ -83,33 +80,47 @@ For classification (LogNNetClassifier model), input of the following metrics is 
 * 'f1': F1 score.
 * 'accuracy': Accuracy score of the classifier. (default)
 
-9. `selected_metric_class` (int or None, optional) Default is None
+8. `selected_metric_class` (int or None, optional) Default is None
 
 Select a class metric for training model. Supports input of the following metrics precision, recall and f1 for the LogNNetClassifier class.
 **When using LogNNetRegressor model is not used.**
 
-10. `num_folds` (int value, optional), default=1
+9. `num_folds` (int value, optional), default=1
 
 The number of folds for cross-validation of the model.
 
-11. `num_particles` (int value, optional), default=10
+10. `num_particles` (int value, optional), default=10
 
 The number of particles in the Particle Swarm Optimization (PSO) method, used for parameter optimization.
 
-12. `num_threads` (int value, optional), default=10
+11. `num_threads` (int value, optional), default=10
 
 The number of threads to be used during model training for parallel data processing.
 
-13. `num_iterations` (int value, optional), default=10
+12. `num_iterations` (int value, optional), default=10
 
 The number of iterations of the optimization algorithm.
 
+### Additional configuration options.
 
-*- manual input of MLP model parameters from the scikit-learn library is supported.
+1. `use_reservoir` (bool value, optional), default=True
+
+The parameter responsible for the use of a chaotic reservoir in calculations. If the value is "False" the LogNNet module operates in the MLP-model mode with the selection of optimal parameters through PSO.
+
+2. `use_debug_mode` (bool value, optional), default=False
+
+The parameter responsible for additional output of service information during the LogNNet library operation.
+
+3. `**`  MLP-model parameters from the scikit-learn library. 
+
+The LogNNetRegressor object additionally supports [MLPRegressor](https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPRegressor.html) object parameters.
+
+The LogNNetClassifier object additionally supports [MLPClassifier](https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html) object parameters.
+
 
 ## Usage
 
-### LogNNetRegressor ### 
+### LogNNetRegressor 
 
 Multi-layer LogNNet Regression
 
@@ -119,19 +130,18 @@ from LogNNet.neural_network import LogNNetRegressor
 ...
 
 model = LogNNetRegressor(
-                input_layer_neurons=(10, 150),
-                first_layer_neurons=(1, 60),
-                hidden_layer_neurons=(1, 35),
-                learning_rate=(0.001, 0.01),
-                n_epochs=(5, 550),
-                n_f=-1,
-                ngen=(1, 500),
-                selected_metric='r2',
-                num_folds=1, 
-                num_particles=10,
-                num_threads=10,
-                num_iterations=10)
-                
+    num_rows_W=(10, 150),
+    limit_hidden_layers=((1, 60), (1, 35)),
+    learning_rate=(0.001, 0.1),
+    n_epochs=(5, 550),
+    n_f=-1,
+    ngen=(1, 500),
+    selected_metric='r2',
+    num_folds=1,
+    num_particles=10,
+    num_threads=10,
+    num_iterations=10)
+
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
@@ -142,31 +152,56 @@ y_pred = model.predict(X_test)
 
 Multi-layer LogNNet Classification
 
-
 ```python
 from LogNNet.neural_network import LogNNetClassifier
 
 ...
 
 model = LogNNetClassifier(
-                input_layer_neurons=(10, 150),
-                first_layer_neurons=(1, 60),
-                hidden_layer_neurons=(1, 35),
-                learning_rate=(0.001, 0.01),
-                n_epochs=(5, 550),
-                n_f=-1,
-                ngen=(1, 500),
-                selected_metric='accuracy',
-                selected_metric_class=None,
-                num_folds=1, 
-                num_particles=10,
-                num_threads=10,
-                num_iterations=10)
-                
+    num_rows_W=(10, 150),
+    limit_hidden_layers=((1, 60), (1, 35)),
+    learning_rate=(0.001, 0.1),
+    n_epochs=(5, 550),
+    n_f=-1,
+    ngen=(1, 500),
+    selected_metric='accuracy',
+    selected_metric_class=None,
+    num_folds=1,
+    num_particles=10,
+    num_threads=10,
+    num_iterations=10)
+
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
 ...
+```
+
+### Import/export of trained LogNNet model
+
+The functionality of import/export of the LogNNet model after executing the "fit" function has been implemented. For the LogNNetRegressor and LogNNetClassifier implementations, the functionality is similar.
+For the example, we will use the LogNNetRegressor model.
+
+Code for saving model to file:
+```python
+from LogNNet.neural_network import LogNNetRegressor
+
+params = {} # Some parameters
+
+model = LogNNetRegressor(**params)
+model.fit(X_train, y_train)
+
+model.export_model(file_name='LogNNet_model.joblib')
+....
+```
+If the "file_name" parameter is not specified or is None, a model with the name will be created 'timestamp_LogNNet_model.joblib'.
+
+Code to load a trained model from a file:
+```python
+from LogNNet.neural_network import LogNNetRegressor
+
+model = LogNNetRegressor().import_model(file_name='LogNNet_model.joblib')
+....
 ```
 
 ## How to use example files
@@ -193,7 +228,7 @@ If the variable is not defined, the first column in the file "input_file" will b
 - LogNNet_params - dictionary containing the parameters of the LogNNet neural network [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#parameters).
 
 6. If changes have been made, you should save the file. Run the example files
-7. Once executed, a new directory "LogNNet_results" will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt`
+7. Once executed, a new directory "LogNNet_results" will be created, which contains a report file named `{unix_time}_metrics_{database_name}.txt` and a file named `{unix_time}_LogNNet_model_{database_name}.joblib` containing the trained model
 8. If a regression task was performed, an additional file will be created with the predicted data, file named `{unix_time}_data_{database_name}.txt`
 
 ## Authors

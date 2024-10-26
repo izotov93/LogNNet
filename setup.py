@@ -1,6 +1,5 @@
 from setuptools import setup, find_packages
-
-VERSION = '1.4'
+from LogNNet import __version__
 
 
 def readme():
@@ -19,7 +18,7 @@ requirements = [
 
 setup(
     name='LogNNet',
-    version=VERSION,
+    version=__version__,
     description='This package implements the lognet neural network, which uses chaotic transformations in the '
                 'weight matrix to more effectively recognize patterns in data. With the ability to generate '
                 'weight coefficients on the fly from only four parameters, it is effective on devices with '

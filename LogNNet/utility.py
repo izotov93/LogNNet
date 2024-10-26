@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Thu Aug 17 10:00:00 2024
+Created on Aug 17 10:00:00 2024
+Modified on Oct 23 15:00 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
@@ -9,11 +10,6 @@ Created on Thu Aug 17 10:00:00 2024
 """
 
 import numpy as np
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.metrics import (matthews_corrcoef, precision_score, recall_score, f1_score,
-                             confusion_matrix, accuracy_score)
-from scipy.stats import pearsonr
-
 
 def normalize_data2(X_train: np.ndarray, X_test: np.ndarray,
                     X_train_min: np.ndarray, denominator: np.ndarray) -> (np.ndarray, np.ndarray):
@@ -183,88 +179,9 @@ def binary_representation(n: int, num_bits: int) -> str:
     return bin(n)[2:].zfill(num_bits)
 
 
-def calculate_metrics_for_regressor(all_y_true, all_y_pred) -> dict:
-    """
-    Calculate evaluation metrics for a regression model.
-
-    This function computes several common regression metrics based
-    on the true and predicted values provided. The metrics calculated
-    include R-squared (R²), Pearson correlation coefficient, Mean Squared
-    Error (MSE), Mean Absolute Error (MAE), and Root Mean Squared Error (RMSE).
-
-        :param all_y_true: (list): The true target values
-        :param all_y_pred: (list): The predicted values from the regression model
-        :return: dict: A dictionary containing the following metrics:
-            - "r2": R-squared score indicating the proportion of variance explained by the model.
-            - "pearson_corr": Pearson correlation coefficient between the true and predicted values.
-            - "mse": Mean Squared Error indicating the average squared difference between the true and predicted
-            values.
-            - "mae": Mean Absolute Error indicating the average absolute difference between the true and predicted
-            values.
-            - "rmse": Root Mean Squared Error indicating the square root of the average squared differences.
-    """
-
-    if np.all(all_y_true == all_y_true[0]) or np.all(all_y_pred == all_y_pred[0]):
-        pearson_corr = 0
-    else:
-        pearson_corr, _ = pearsonr(all_y_true, all_y_pred)
-    mse = mean_squared_error(all_y_true, all_y_pred)
-
-    return {
-        "r2": r2_score(all_y_true, all_y_pred),
-        "pearson_corr": pearson_corr,
-        "mse": mse,
-        "mae": mean_absolute_error(all_y_true, all_y_pred),
-        "rmse": np.sqrt(mse)
-    }
+def main():
+    pass
 
 
-def calculate_metrics_for_classifier(all_y_true, all_y_pred,
-                                     mcc_scores=None, precision_scores=None,
-                                     recall_scores=None, f1_scores=None,
-                                     accuracy_scores=None) -> dict:
-    """
-    Calculate evaluation metrics for a classification model.
-
-    This function computes a range of performance metrics based on
-    the true and predicted values provided for a classifier. The metrics
-    include Matthews Correlation Coefficient (MCC), precision, recall,
-    F1 score, accuracy, and a confusion matrix.
-
-        :param all_y_true: (list): The true labels for the data
-        :param all_y_pred: (list): The predicted labels from the classification model
-        :param mcc_scores: (list, optional): List of MCC scores to compute the average. Default is None
-        :param precision_scores: (list, optional): List of precision scores to compute the average.
-                                    Default is None
-        :param recall_scores: (list, optional): List of recall scores to compute the average. Default is None
-        :param f1_scores: (list, optional): List of F1 scores to compute the average. Default is None
-        :param accuracy_scores: (list, optional): List of accuracy scores to compute the average. Default is None
-        :param all_labels: (list, optional): List containing possible labels in the array y. Default is None
-        :return: dict: A dictionary containing the following metrics:
-                - "mcc": Matthews Correlation Coefficient indicating classification quality.
-                - "precision": Precision score computed with 'average=None'.
-                - "recall": Recall score computed with 'average=None'.
-                - "f1": F1 score computed with 'average=None'.
-                - "accuracy": Accuracy score of the classifier.
-                - "avg_mcc": Average MCC if `mcc_scores` is provided.
-                - "avg_precision": Average precision if `precision_scores` is provided.
-                - "avg_recall": Average recall if `recall_scores` is provided.
-                - "avg_f1": Average F1 score if `f1_scores` is provided.
-                - "avg_accuracy": Average accuracy if `accuracy_scores` is provided.
-    """
-
-    metrics = {
-        "mcc": matthews_corrcoef(all_y_true, all_y_pred),
-        "precision": precision_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "recall": recall_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "f1": f1_score(all_y_true, all_y_pred, average=None, zero_division=0),
-        "accuracy": accuracy_score(all_y_true, all_y_pred),
-    }
-
-    metrics.setdefault('avg_mcc', np.mean(mcc_scores)) if mcc_scores is not None else None
-    metrics.setdefault('avg_precision', np.mean(precision_scores)) if precision_scores is not None else None
-    metrics.setdefault('avg_recall', np.mean(recall_scores)) if recall_scores is not None else None
-    metrics.setdefault('avg_f1', np.mean(f1_scores)) if f1_scores is not None else None
-    metrics.setdefault('avg_accuracy', np.mean(accuracy_scores)) if accuracy_scores is not None else None
-
-    return metrics
+if __name__ == "__main__":
+    main()

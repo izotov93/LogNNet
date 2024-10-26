@@ -1,21 +1,26 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Thu Aug 17 10:00:00 2024
+Created on Aug 17 10:00:00 2024
+Modified on Oct 18 17:00 2024
+Modified on Oct 23 15:00 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
 @user: izotov93
 """
+
 import numbers
 import time
 import os
 import numpy as np
 import joblib
 from LogNNet.pso_method import PSO
-from LogNNet.mlp_evaluation import testing_model_on_all_data
-from sklearn.neural_network import MLPRegressor, MLPClassifier
+from LogNNet.mlp_evaluation import lognnet_evaluate_by_params
 import warnings
+from sklearn.utils import check_array, check_X_y
+
+from . import __version__
 
 warnings.filterwarnings("ignore", message="Stochastic Optimizer: Maximum iterations")
 
@@ -64,20 +69,10 @@ def validate_param(param: (tuple, int, float, str, bool, None),
     elif not isinstance(param, expected_type):
         raise ValueError(f'The parameter "{name_param}" must be of type {expected_type}')
 
-    elif isinstance(param, (int, float)) and param <= 0 and name_param != 'noise':
+    elif isinstance(param, (int, float)) and param <= 0 and not isinstance(param, bool):
         raise ValueError(f'The parameter "{name_param}" must be positive number. Value {param} is not supported')
 
-    elif isinstance(param, (int, float)) and param < 0 and name_param == 'noise':
-        raise ValueError(f'The parameter "{name_param}" must be non-negative number. Value {param} is not supported')
-
-    else:
-        return param
-
-
-def validate_dict_mlp_param(input_dict: dict) -> (dict, None):
-    if not isinstance(input_dict, dict):
-        return None
-    else:
+    elif isinstance(param, dict):
         default_params = {
             'activation': 'relu',
             'solver': 'adam',
@@ -86,7 +81,7 @@ def validate_dict_mlp_param(input_dict: dict) -> (dict, None):
             'learning_rate': 'constant',
             'power_t': 0.5,
             'shuffle': True,
-            'random_state': None,
+            'random_state': 42,
             'tol': 1e-04,
             'verbose': False,
             'warm_start': False,
@@ -100,22 +95,54 @@ def validate_dict_mlp_param(input_dict: dict) -> (dict, None):
             'n_iter_no_change': 10,
             'max_fun': 15000
         }
-        validated_params = {}
+        validated_params = {'random_state': 42}
 
         for key, default_value in default_params.items():
-            if key in input_dict and input_dict[key] != default_value:
-                validated_params[key] = input_dict[key]
+            if key in param and param[key] != default_value:
+                validated_params[key] = param[key]
 
         return validated_params
 
+    else:
+        return param
+
+
+def validate_limit_hidden_layers(limit_hidden_layers: (tuple, int)) -> tuple:
+    """
+    This function checks if 'limit_hidden_layers' is a tuple that contains either:
+    - integers, in which case it converts them into tuples of identical limits,
+    - or tuples of integers, where each inner tuple must contain 1 or 2 integer elements.
+
+        :param limit_hidden_layers: (tuple): The input to be validated.
+        :return: tuple: A tuple containing the validated limits.
+    """
+
+    if isinstance(limit_hidden_layers, tuple):
+        validated_limits = []
+        for item in limit_hidden_layers:
+            if isinstance(item, int):
+                validated_limits.append((item, item))
+            elif isinstance(item, tuple):
+                if len(item) > 2 or not all(isinstance(x, int) for x in item):
+                    raise ValueError("Invalid format: each element must be a tuple "
+                                     "consisting of 1 or 2 integer values.")
+                validated_limits.append(item)
+            else:
+                raise ValueError("Invalid format: elements must be integers or tuples.")
+        return tuple(validated_limits)
+
+    elif isinstance(limit_hidden_layers, int) and limit_hidden_layers > 0:
+        return ((limit_hidden_layers, limit_hidden_layers), )
+
+    raise ValueError("Invalid format: it must be a tuple of integers or a tuple of tuples.")
+
 
 class BaseLogNNet(object):
-    lib_version = '1.4'
+    LogNNet_version = __version__
 
     def __init__(self,
-                 input_layer_neurons: (tuple, int),
-                 first_layer_neurons: (tuple, int),
-                 hidden_layer_neurons: (tuple, int),
+                 num_rows_W: (tuple, int),
+                 limit_hidden_layers: (tuple, int),
                  learning_rate_init: (tuple, float),
                  n_epochs: (tuple, int),
                  n_f: (tuple, int),
@@ -128,25 +155,25 @@ class BaseLogNNet(object):
                  num_iterations: int,
                  **kwargs):
 
-        self.input_layer_data = None
-        self._LogNNet_global_best_position = None
-        self._LogNNet_global_best_fitness = None
         self.mlp_model = None
+        self.input_layer_data = None
         self.LogNNet_best_params = {}
 
-        self.mlp_params = validate_dict_mlp_param(kwargs)
+        # additional parameters
+        use_reservoir = validate_param(kwargs.get('use_reservoir', True), bool,
+                                       name_param='use_reservoir')
+        self._use_debug_mode = validate_param(kwargs.get('use_debug_mode', False), bool,
+                                       name_param='use_debug_mode')
+        self.mlp_params = validate_param(kwargs, dict, name_param='mlp_params')
+        use_reservoir = validate_param(use_reservoir, bool, name_param='use_reservoir')
 
         self._param_ranges = {
-            'num_rows_W': validate_param(input_layer_neurons, int,
-                                         check_limits=True, name_param='input_layer_neurons'),
-            'Zn0': (-499, 499),
-            'Cint': (-499, 499),
-            'Bint': (-499, 499),
-            'Lint': (100, 10000),
-            'first_layer_neurons': validate_param(first_layer_neurons, int,
-                                                  check_limits=True, name_param='first_layer_neurons'),
-            'hidden_layer_neurons': validate_param(hidden_layer_neurons, int,
-                                                   check_limits=True, name_param='hidden_layer_neurons'),
+            'num_rows_W': validate_param(num_rows_W, int, check_limits=True,
+                                         name_param='input_layer_neurons') if use_reservoir else (0, 0),
+            'Zn0': (-499, 499) if use_reservoir else (0, 0),
+            'Cint': (-499, 499) if use_reservoir else (0, 0),
+            'Bint': (-499, 499) if use_reservoir else (0, 0),
+            'Lint': (100, 10000)if use_reservoir else (0, 0),
             'learning_rate_init': validate_param(learning_rate_init, float,
                                                  check_limits=True, name_param='learning_rate_init'),
             'epochs': validate_param(n_epochs, int, check_limits=True, name_param='n_epochs'),
@@ -155,6 +182,10 @@ class BaseLogNNet(object):
             'ngen': validate_param(ngen, int, check_limits=True, name_param='ngen')
         }
 
+        limit_hidden_layers = validate_limit_hidden_layers(limit_hidden_layers)
+        for i, limits in enumerate(limit_hidden_layers, start=1):
+            self._param_ranges[f'hidden_layers_{i}'] = limits
+
         self.basic_params = {
             'X': None,
             'y': None,
@@ -162,34 +193,116 @@ class BaseLogNNet(object):
             'param_ranges': self._param_ranges,
             'selected_metric': selected_metric,
             'selected_metric_class': selected_metric_class,
-            'dimensions': len(self._param_ranges),
             'num_particles': validate_param(num_particles, int, name_param='num_particles'),
             'num_threads': validate_param(num_threads, int, name_param='num_threads'),
             'num_iterations': validate_param(num_iterations, int, name_param='num_iterations'),
             'target': None,
             'static_features': None,
+            'use_reservoir': use_reservoir,
+            'use_debug_mode': self._use_debug_mode,
             'mlp_params': self.mlp_params
         }
 
-    def __version__(self):
-        return self.lib_version
+    def get_version(self) -> str:
+        """
+        Getting package version
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> (MLPRegressor, MLPClassifier):
+            :return: (str): LogNNet package version
+        """
+        return self.LogNNet_version
+
+    def fit(self, X, y) -> object:
         """
         Fit the model to data matrix X and targets y.
-            :param X: (ndarray): The input data.
-            :param y: (ndarray): The target values (class labels in classification, real numbers in regression).
+
+            :param X: (array-like): The input data.
+            :param y: (array-like): The target values (class labels in classification, real numbers in regression).
             :return: (object): Returns a trained (MLPRegressor or MLPClassifier) model.
         """
 
-        self.basic_params['X'] = X
-        self.basic_params['y'] = y
+        self.basic_params['X'], self.basic_params['y'] = check_X_y(X, y)
+        self.__validate_LogNNet_params_before_fit()
 
-        self._param_ranges['prizn'] = (*self._param_ranges['prizn'][:1], 2 ** X.shape[1] - 1)
+        best_position, _ = PSO(**self.basic_params)
+
+        self.LogNNet_best_params = {
+            'num_rows_W': int(best_position[0]),
+            'Zn0': best_position[1],
+            'Cint': best_position[2],
+            'Bint': best_position[3],
+            'Lint': best_position[4],
+            'hidden_layer_sizes': tuple(int(x) for x in best_position[10:]),
+            'learning_rate_init': float(best_position[5]),
+            'epochs': int(best_position[6]),
+            'prizn': int(best_position[7]),
+            'n_f': int(best_position[8]),
+            'ngen': int(best_position[9]),
+        }
+
+        params = {
+            'hidden_layer_sizes': self.LogNNet_best_params['hidden_layer_sizes'],
+            'learning_rate_init': self.LogNNet_best_params['learning_rate_init'],
+            'max_iter': self.LogNNet_best_params['epochs'],
+        }
+
+        if self.mlp_params is not None:
+            params.update(self.mlp_params)
+
+        res_metric, self.mlp_model, self.input_layer_data = lognnet_evaluate_by_params(
+            X=X,
+            y=y,
+            mlp_params=params,
+            lognnet_params=self.LogNNet_best_params,
+            selected_metric=self.basic_params['selected_metric'],
+            selected_metric_class=self.basic_params['selected_metric_class'],
+            target=self.basic_params['target'])
+
+        print(f"Best value metric '{self.basic_params['selected_metric']}' = {round(res_metric, 6)} (Train set)")
+
+        keys_to_remove = ['X', 'y', 'use_debug_mode']
+        self.basic_params = {key: value for key, value in self.basic_params.items() if key not in keys_to_remove}
+
+        return self.mlp_model
+
+    def predict(self, X) -> np.ndarray:
+        """
+        Predict using the LogNNet model.
+
+            :param X: (np.ndarray): The input data.
+            :return: (np.ndarray): The predicted classes.
+        """
+        X = check_array(X)
+
+        if self.input_layer_data is None or self.mlp_model is None or not self.LogNNet_best_params:
+            raise Exception("The LogNNet neural network model is not trained. "
+                            "Use the 'fit' function before using the 'predict' function.")
+
+        for i in range(X.shape[1]):
+            if self.input_layer_data['prizn_binary'][i] == '0':
+                X[:, i] = 0
+
+        denominator = np.array(self.input_layer_data['X_train_max']) - np.array(self.input_layer_data['X_train_min'])
+        denominator[denominator == 0] = 1
+
+        if self.input_layer_data['W'] is not None:
+            X_test_normalized = (X - np.array(self.input_layer_data['X_train_min'])) / denominator
+            W = self.input_layer_data['W']
+            X_new_test = np.dot(X_test_normalized, W.T)
+
+            denominator_Sh = np.array(self.input_layer_data['Shmax']) - np.array(self.input_layer_data['Shmin'])
+            denominator_Sh[denominator_Sh == 0] = 1
+            X_new_test_Sh = (X_new_test - np.array(self.input_layer_data['Shmin'])) / denominator_Sh - 0.5
+        else:
+            X_new_test_Sh = (X - np.array(self.input_layer_data['X_train_min'])) / denominator
+
+        return self.mlp_model.predict(X_new_test_Sh)
+
+    def __validate_LogNNet_params_before_fit(self):
+        self._param_ranges['prizn'] = (*self._param_ranges['prizn'][:1], 2 ** self.basic_params['X'].shape[1] - 1)
 
         if isinstance(self._param_ranges['n_f'], int):
             if self._param_ranges['n_f'] == -1:
-                self._param_ranges['n_f'] = (X.shape[1], X.shape[1])
+                self._param_ranges['n_f'] = (self.basic_params['X'].shape[1], self.basic_params['X'].shape[1])
             elif self._param_ranges['n_f'] > 0:
                 self._param_ranges['n_f'] = (int(self._param_ranges['n_f']), int(self._param_ranges['n_f']))
             else:
@@ -200,7 +313,7 @@ class BaseLogNNet(object):
 
         elif isinstance(self._param_ranges['n_f'], tuple) and len(self._param_ranges['n_f']) == 2:
             self._param_ranges['n_f'] = (max(1, self._param_ranges['n_f'][0]),
-                                         min(self._param_ranges['n_f'][1], X.shape[1]))
+                                         min(self._param_ranges['n_f'][1], self.basic_params['X'].shape[1]))
             self.basic_params['static_features'] = None
 
         elif isinstance(self._param_ranges['n_f'], list):
@@ -213,82 +326,14 @@ class BaseLogNNet(object):
 
         if (self.basic_params['selected_metric_class'] is not None and
                 self.basic_params['target'] == 'Classifier' and
-                (self.basic_params['selected_metric_class'] > int(np.max(y, axis=0)) or
+                (self.basic_params['selected_metric_class'] > int(np.max(self.basic_params['y'], axis=0)) or
                  self.basic_params['selected_metric_class'] < 0)):
             raise ValueError(f"Wrong param 'selected_metric_class'. "
-                             f"Validate limits - (0, {int(np.max(y, axis=0))})")
+                             f"Validate limits - (0, {int(np.max(self.basic_params['y'], axis=0))})")
 
         self.basic_params['param_ranges'] = self._param_ranges
 
-        (self._LogNNet_global_best_position, self._LogNNet_global_best_fitness,
-         self.mlp_model, self.input_layer_data) = PSO(**self.basic_params)
-
-        self.LogNNet_best_params = {
-            'num_rows_W': int(self._LogNNet_global_best_position[0]),
-            'Zn0': self._LogNNet_global_best_position[1],
-            'Cint': self._LogNNet_global_best_position[2],
-            'Bint': self._LogNNet_global_best_position[3],
-            'Lint': self._LogNNet_global_best_position[4],
-            'first_layer_neurons': int(self._LogNNet_global_best_position[5]),
-            'hidden_layer_neurons': int(self._LogNNet_global_best_position[6]),
-            'learning_rate_init': float(self._LogNNet_global_best_position[7]),
-            'epochs': int(self._LogNNet_global_best_position[8]),
-            'prizn': int(self._LogNNet_global_best_position[9]),
-            'n_f': int(self._LogNNet_global_best_position[10]),
-            'ngen': int(self._LogNNet_global_best_position[11]),
-        }
-
-        params = {
-            'hidden_layer_sizes': (self.LogNNet_best_params['first_layer_neurons'],
-                                   self.LogNNet_best_params['hidden_layer_neurons']),
-            'learning_rate_init': self.LogNNet_best_params['learning_rate_init'],
-            'max_iter': self.LogNNet_best_params['epochs'],
-        }
-        if self.mlp_params is not None:
-            params.update(self.mlp_params)
-
-        metrics, self.mlp_model, self.input_layer_data = (
-            testing_model_on_all_data(X=X, y=y, params=params,
-                                      prizn_binary=self.input_layer_data['prizn_binary'],
-                                      W=self.input_layer_data['W'],
-                                      target=self.basic_params['target']))
-
-        res_metric = metrics[self.basic_params['selected_metric']] if (
-                self.basic_params['selected_metric_class'] is None) else (
-            metrics)[self.basic_params['selected_metric']][self.basic_params['selected_metric_class']]
-
-        print(f"Final value metric {self.basic_params['selected_metric']} = {round(res_metric, 6)}")
-
-        return self.mlp_model
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict using the LogNNet regressor.
-            :param X: (np.ndarray): The input data.
-            :return: (np.ndarray): The predicted classes.
-        """
-
-        if self.input_layer_data is None or self.mlp_model is None:
-            raise Exception("The LogNNet neural network model is not trained. "
-                            "Use the 'FIT' function before using the 'PREDICT' function.")
-
-        for i in range(X.shape[1]):
-            if self.input_layer_data['prizn_binary'][i] == '0':
-                X[:, i] = 0
-
-        denominator = np.array(self.input_layer_data['X_train_max']) - np.array(self.input_layer_data['X_train_min'])
-        denominator[denominator == 0] = 1
-        X_test_normalized = (X - np.array(self.input_layer_data['X_train_min'])) / denominator
-        W = self.input_layer_data['W']
-        X_new_test = np.dot(X_test_normalized, W.T)
-
-        denominator_Sh = np.array(self.input_layer_data['Shmax']) - np.array(self.input_layer_data['Shmin'])
-        denominator_Sh[denominator_Sh == 0] = 1
-        X_new_test_Sh = (X_new_test - np.array(self.input_layer_data['Shmin'])) / denominator_Sh - 0.5
-
-        return self.mlp_model.predict(X_new_test_Sh)
-
-    def export_model(self, type_of_model='max'):
+    def export_model(self, file_name=None, **kwargs):
         """
         Save the trained LogNNet model and its parameters to a file.
 
@@ -297,23 +342,36 @@ class BaseLogNNet(object):
         either 'max' to save the model with maximum performance or 'min'
         to save it with minimized parameters.
 
-            :param type_of_model: (str): The type of model to save.
-                - 'max': Saves the complete model and its parameters.
-                - 'min': Saves only the model coefficients, biases, and input layer parameters.
-            :return: (None) The saved model will be written to a file named with a timestamp
-                    to ensure uniqueness, formatted as '{timestamp}_LogNNet_model_{type_of_model}.joblib'
+            :param file_name: (str or None): file name of the saved model.
+                If none, the name is generated automatically with a prefix in the form of a timestamp.
+            :return: (None) A model with the name - file_name
+                or in the format will be generated '{timestamp}_LogNNet_model_{type_of_model}.joblib'
         """
+
+        if not isinstance(file_name, str) or not file_name.endswith('.joblib'):
+            raise TypeError('file_name must be a string and  end with "*.joblib"')
+
+        if self.input_layer_data is None or self.mlp_model is None or not self.LogNNet_best_params:
+            raise Exception("The LogNNet neural network model is not trained. "
+                            "Use the 'fit' function before using the 'export_model' function.")
+
+        type_of_model = kwargs.get('type', 'max')
+
         if type_of_model == 'max':
             value = {'model': self.mlp_model,
-                     'model_params': self._LogNNet_global_best_position,
-                     'input_layer_data': self.input_layer_data}
+                     'model_params': self.LogNNet_best_params,
+                     'input_layer_data': self.input_layer_data,
+                     'basic_params': self.basic_params,
+                     'version': self.LogNNet_version
+                     }
+
         elif type_of_model == 'min':
             params_reservoir = {
-                'num_rows_W': self._LogNNet_global_best_position['num_rows_W'],
-                'Zn0': self._LogNNet_global_best_position['Zn0'],
-                'Cint': self._LogNNet_global_best_position['Cint'],
-                'Bint': self._LogNNet_global_best_position['Bint'],
-                'Lint': self._LogNNet_global_best_position['Lint'],
+                'num_rows_W': self.LogNNet_best_params['num_rows_W'],
+                'Zn0': self.LogNNet_best_params['Zn0'],
+                'Cint': self.LogNNet_best_params['Cint'],
+                'Bint': self.LogNNet_best_params['Bint'],
+                'Lint': self.LogNNet_best_params['Lint'],
                 'prizn_binary': self.input_layer_data['prizn_binary'],
                 'Shmax': self.input_layer_data['Shmax'],
                 'Shmin': self.input_layer_data['Shmin'],
@@ -323,12 +381,17 @@ class BaseLogNNet(object):
             value = {'coefs': self.mlp_model.coefs_,
                      'bias': self.mlp_model.intercepts_,
                      'input_layers_params': params_reservoir}
+
         else:
             raise ValueError('Param "type_of_model" is not correct. Valid options: "min" or "max"')
 
-        joblib.dump(value=value, filename=f'{int(time.time())}_LogNNet_model_{type_of_model}.joblib')
+        filename = file_name if file_name is not None else f'{int(time.time())}_LogNNet_model_{type_of_model}.joblib'
+        joblib.dump(value=value, filename=filename)
 
-    def import_model(self, file_model_name: str):
+        if self._use_debug_mode:
+            print(f'Model successfully saved under file name {filename}')
+
+    def import_model(self, file_name: str) -> object:
         """
         Import a trained LogNNet model from a specified file.
 
@@ -337,30 +400,47 @@ class BaseLogNNet(object):
         attempting to load the model. Depending on the contents of the loaded
         data, it initializes the model and its parameters for further use.
 
-            :param file_model_name: (str): The path to the file containing the serialized model.
-            :return: (None) Fills an example of a class with data.
+            :param file_name: (str): The path to the file containing the serialized model.
+            :return: (object) Fills an example of a class with data.
         """
 
-        if not os.path.isfile(file_model_name):
-            raise ValueError(f'File "{file_model_name}" not found. Check the file path and try again.')
+        if not os.path.isfile(file_name):
+            raise ValueError(f'File "{file_name}" not found. Check the file path and try again.')
+        if not isinstance(file_name, str):
+            raise TypeError('file_name must be a string.')
 
-        model_data = joblib.load(file_model_name)
+        model_data = joblib.load(file_name)
 
         if model_data['model'] is not None:
             self.mlp_model = model_data['model']
-            self._LogNNet_global_best_position = model_data['model_params']
+            self.LogNNet_best_params = model_data['model_params']
             self.input_layer_data = model_data['input_layer_data']
+            self.basic_params = model_data['basic_params']
+
+            version_of_model = model_data.get('version', None)
+            if version_of_model is None and version_of_model != self.LogNNet_version:
+                print(f'WARNING. The version of the LogNNet package {self.LogNNet_version} does not match '
+                      f'the version imported from the model - {version_of_model}. '
+                      f'The functionality of the package is not guaranteed.')
+
+            if self.LogNNet_best_params['num_rows_W'] == 0:
+                self.basic_params['use_reservoir'] = False
+
         elif model_data['coefs'] is not None and model_data['bias'] is not None:
-            raise Exception(f"The file {file_model_name} contains minimalistic data for LogNNet to work. "
+            raise Exception(f"The file {file_name} contains minimalistic data for LogNNet to work. "
                             f"Use a special script to unload data from this model")
+
+        if self._use_debug_mode:
+            print(f'Data from {file_name} was successfully loaded')
+
+        return self
 
 
 class LogNNetRegressor(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 150),
-                 first_layer_neurons=(1, 60),
-                 hidden_layer_neurons=(1, 35),
-                 learning_rate_init=(0.001, 0.01),
+                 num_rows_W=(10, 150),
+                 limit_hidden_layers=((1, 60), (1, 35)),
+                 learning_rate_init=(0.001, 0.1),
                  n_epochs=(5, 550),
                  n_f=-1,
                  ngen=(1, 500),
@@ -373,15 +453,13 @@ class LogNNetRegressor(BaseLogNNet):
         """
         Model LogNNet Regression.
 
-            :param input_layer_neurons: (array-like of int or singular int value, optional): The element represents
+            :param num_rows_W: (array-like of int or singular int value, optional): The element represents
                 the number of rows in the reservoir. Default value to (10, 150).
-            :param first_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the first hidden layer. Default value to (1, 60).
-            :param hidden_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the hidden layer. Default value to (1, 35).
+            :param limit_hidden_layers: (array-like of int or singular int value, optional): The element represents
+                the number of neurons in the hidden layer. Default value to ((1, 60), (1, 35)).
             :param learning_rate_init: (array-like of float or singular float value, optional):
                 The range of learning rate values that the optimizer will use to adjust the model's parameters.
-                Default value to (0.001, 0.01).
+                Default value to (0.001, 0.1).
             :param n_epochs: (array-like of int or singular int value, optional): The range of the number of epochs
                 for which the model will be trained. Default value to (5, 550).
             :param n_f: (array-like of int or singular int value, optional): This parameter defines the conditions
@@ -426,9 +504,8 @@ class LogNNetRegressor(BaseLogNNet):
                                          name_param='selected_metric') if selected_metric != '' else valid_options[0]
 
         super().__init__(
-            input_layer_neurons=input_layer_neurons,
-            first_layer_neurons=first_layer_neurons,
-            hidden_layer_neurons=hidden_layer_neurons,
+            num_rows_W=num_rows_W,
+            limit_hidden_layers=limit_hidden_layers,
             learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
@@ -446,10 +523,9 @@ class LogNNetRegressor(BaseLogNNet):
 
 class LogNNetClassifier(BaseLogNNet):
     def __init__(self,
-                 input_layer_neurons=(10, 150),
-                 first_layer_neurons=(1, 60),
-                 hidden_layer_neurons=(1, 35),
-                 learning_rate_init=(0.001, 0.01),
+                 num_rows_W=(10, 150),
+                 limit_hidden_layers=((1, 60), (1, 35)),
+                 learning_rate_init=(0.001, 0.1),
                  n_epochs=(5, 550),
                  n_f=-1,
                  ngen=(1, 500),
@@ -463,15 +539,13 @@ class LogNNetClassifier(BaseLogNNet):
         """
         LogNNet classification class
 
-            :param input_layer_neurons: (array-like of int or singular int value, optional): The element represents
+            :param num_rows_W: (array-like of int or singular int value, optional): The element represents
                 the number of rows in the reservoir. Default value to (10, 150).
-            :param first_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the first hidden layer. Default value to (1, 60).
-            :param hidden_layer_neurons: (array-like of int or singular int value, optional): The element represents
-                the number of neurons in the hidden layer. Default value to (1, 35).
+            :param limit_hidden_layers: (array-like of int or singular int value, optional): The element represents
+                the number of neurons in the hidden layer. Default value to ((1, 60), (1, 35)).
             :param learning_rate_init: (array-like of float or singular float value, optional): The range of
                 learning rate values that the optimizer will use to adjust the model's parameters.
-                Default value to (0.001, 0.01).
+                Default value to (0.001, 0.1).
             :param n_epochs: (array-like of int or singular int value, optional): The range of the number of epochs
                 for which the model will be trained. Default value to (5, 550).
             :param n_f: (array-like of int or singular int value, optional): This parameter defines the conditions
@@ -509,8 +583,7 @@ class LogNNetClassifier(BaseLogNNet):
 
         self.kwargs = kwargs
 
-        valid_options = ["accuracy", "mcc", "precision", "recall", "f1",
-                         "avg_precision", "avg_recall", "avg_f1", "avg_accuracy", "avg_mcc"]
+        valid_options = ["accuracy", "mcc", "precision", "recall", "f1"]
 
         selected_metric = validate_param(selected_metric,
                                          expected_type=str,
@@ -524,9 +597,8 @@ class LogNNetClassifier(BaseLogNNet):
             selected_metric_class = None
 
         super().__init__(
-            input_layer_neurons=input_layer_neurons,
-            first_layer_neurons=first_layer_neurons,
-            hidden_layer_neurons=hidden_layer_neurons,
+            num_rows_W=num_rows_W,
+            limit_hidden_layers=limit_hidden_layers,
             learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
@@ -543,5 +615,9 @@ class LogNNetClassifier(BaseLogNNet):
         self.basic_params['target'] = 'Classifier'
 
 
-if __name__ == "__main__":
+def main():
     pass
+
+
+if __name__ == "__main__":
+    main()

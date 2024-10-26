@@ -9,11 +9,9 @@ Created on Thu Oct 02 13:25:00 2024
 
 import time
 import os
-import json
 import csv
 import pandas as pd
 import numpy as np
-from LogNNet import utility
 from LogNNet.neural_network import LogNNetRegressor
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from scipy.stats import pearsonr
@@ -28,10 +26,9 @@ input_file = 'mackey-glass_NW50_G500_14451.csv'
 target_column_input_file = 'Target'
 
 LogNNet_params = {
-    'input_layer_neurons': (10, 150),
-    'first_layer_neurons': (1, 60),
-    'hidden_layer_neurons': (1, 35),
-    'learning_rate_init': (0.001, 0.01),
+    'num_rows_W': (10, 150),
+    'limit_hidden_layers': ((1, 60), (1, 35)),
+    'learning_rate_init': (0.001, 0.1),
     'n_epochs': (5, 550),
     'n_f': -1,
     'ngen': (1, 500),
@@ -65,74 +62,6 @@ def format_execution_time(start_time: float) -> str:
     time_parts.append(f"{int(seconds)} sec.")
 
     return " ".join(time_parts)
-
-
-def LogNNet_regression_calculation(input_data_file: str, target_column: (str, None),
-                                   basic_params: dict, output_dir: str) -> None:
-    """
-    Perform regression calculations using the LogNNet model on input data.
-
-    This function reads data from a specified CSV file, trains a LogNNet regressor
-    on the training dataset, evaluates the model on a test dataset, and calculates
-    various performance metrics. It also introduces random noise to the training data.
-    Finally, it saves the results and predictions to the specified output directory.
-
-        :param input_data_file: (str): The name a input CSV file containing feature data and target values.
-        :param target_column: (str or None): The name of the column in the input data that contains the target values.
-        :param basic_params: (dict): A dictionary containing the basic parameters to initialize the LogNNet regressor.
-        :param output_dir: (str): The directory where the output results and predictions will be saved.
-        :return: (None): Outputs the performance metrics and saves the predictions
-            to a text file in the specified output directory (output_dir).
-    """
-
-    start_time = time.time()
-    
-    input_file_name = os.path.splitext(os.path.basename(input_data_file))[0]
-
-    X, y, feature_names = read_csv_file(file_name=input_data_file, target_column=target_column)
-    cutoff = len(X) - 3000
-    X_train, X_test = X[:cutoff], X[cutoff:]
-    y_train, y_test = y[:cutoff], y[cutoff:]
-
-    model = LogNNetRegressor(**basic_params)
-    print(f'LogNNet library version: {model.__version__()}')
-
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    pearson_corr, _ = pearsonr(y_test, y_pred)
-    mse = mean_squared_error(y_test, y_pred)
-    metrics = {
-        "r2": float(round(r2_score(y_test, y_pred), 5)),
-        "pearson_corr": float(round(pearson_corr, 5)),
-        "mse": float(round(mse, 5)),
-        "mae": float(round(mean_absolute_error(y_test, y_pred), 5)),
-        "rmse": float(round(np.sqrt(mse), 5))
-    }
-
-    print(f"Final value of the metric '{basic_params['selected_metric']}' "
-          f"on the test set = {metrics[basic_params['selected_metric']]}")
-          
-    print(f"Computation time - {format_execution_time(start_time)}")
-
-    save_unix_time = print_and_save_results(
-        out_dir=output_dir,
-        metrics=metrics,
-        best_params=model.LogNNet_best_params,
-        data_filename=input_file_name,
-        basic_params=model.basic_params,
-        mlp_params=model.mlp_model.get_params(),
-        feature_names=feature_names)
-
-    file_name = os.path.join(output_dir, f'{save_unix_time}_data_[{input_file_name}].txt')
-    print(f"Predictions data saved in {file_name}")
-
-    with open(file_name, "w") as file:
-        file.write("all_y_true\tall_y_pred\n")
-        for true, pred in zip(y_test, y_pred):
-            file.write(f"{true}\t{pred}\n")
-
-    print('Calculation regression finished')
 
 
 def read_csv_file(file_name: str, target_column=None, none_value=' ') -> (np.ndarray, np.ndarray, list):
@@ -194,82 +123,132 @@ def read_csv_file(file_name: str, target_column=None, none_value=' ') -> (np.nda
     return X, y, data.columns.tolist()[:-1]
 
 
-def print_and_save_results(out_dir: str, metrics: dict, best_params: dict,
-                           data_filename: str, basic_params: dict,
-                           mlp_params: dict, feature_names: list) -> int:
+def print_and_save_results(out_dir: str, data_filename: str, target_column: str, final_metrics: dict,
+                           starting_params: dict, LogNNet_model: object, feature_column_names: list,
+                           compute_time: str) -> int:
     """
     Prints key results of a model evaluation and saves them to a text file.
 
-        :param out_dir: (str) The directory where the results file will be saved
-        :param metrics: (dict) A dictionary containing model evaluation metrics.
-        :param best_params: (dict) A dictionary containing the best hyperparameters found during model tuning.
-        :param data_filename: (str) The name of the data file used in the evaluation.
-        :param basic_params: (dict) A dictionary containing the basic params LogNNet model.
-        :param mlp_params: (dict): A dictionary containing the MLP params LogNNet model.
-        :param feature_names: (list) A list of names associated with each feature in the dataset.
+        :param out_dir: (str): The directory where the results file will be saved.
+        :param data_filename: (str): The name of the data file used in the evaluation.
+        :param target_column: (str): Variable containing the name of the target column in the input file.
+        :param final_metrics: (dict): A dictionary containing model evaluation metrics.
+        :param starting_params: (dict): A dictionary containing the parameters when starting up.
+        :param LogNNet_model: (object): The trained LogNNet model.
+        :param feature_column_names: (list) A list of names associated with each feature in the dataset.
+        :param compute_time: (str): Formatted computation time.
+
         :return: (int) The Unix time (in seconds) at which the results were saved.
     """
 
     unix_time = int(time.time())
-    filename = os.path.join(out_dir, f"{unix_time}_metrics_[{data_filename.split('.')[0]}].txt")
+    filename = os.path.join(out_dir, f"{unix_time}_metrics_[{data_filename}].txt")
     output_str = ""
 
-    input_dim = basic_params['X'].shape[1]
+    prizn_binary = LogNNet_model.input_layer_data['prizn_binary']
 
-    gray_prizn = utility.decimal_to_gray(best_params['prizn'])
-    prizn_binary = utility.binary_representation(gray_prizn, input_dim)
-    prizn_binary = utility.modify_binary_string(prizn_binary, best_params['n_f'], best_params['ngen'],
-                                                basic_params['static_features'])
+    output_str += (f"Data filename: {data_filename}\ntarget_column_input_file: {target_column}\n\n"
+                   f"LogNNet version - {LogNNet_model.get_version()}\nComputation time - {compute_time}\n\n"
+                   f"Settings for starting:\n  ")
+    output_str += '\n  '.join(f"{key}: {value}" for key, value in starting_params.items() if key != 'use_debug_mode')
 
-    output_str += (f"Data filename: {data_filename}\n\n"
-                   f"num_particles: {basic_params['num_particles']}\nnum_threads: {basic_params['num_threads']}\n"
-                   f"num_iterations: {basic_params['num_iterations']}\ndimensions: {basic_params['dimensions']}\n"
-                   f"selected_metric: {basic_params['selected_metric']}\n"
-                   f"selected_metric_class: {basic_params['selected_metric_class']}\n"
-                   f"num_folds: {basic_params['num_folds']}\n")
+    output_str += "\n\nMetrics:\n  "
+    output_str += '\n  '.join(f"{key}: {value}" for key, value in final_metrics.items())
 
-    output_str += "\nMetrics:\n"
-    for key, value in metrics.items():
-        if isinstance(value, np.ndarray):
-            if key == "conf_matrix":
-                output_str += f"{key}:\nActual\\Predicted\n" + "\t".join(
-                    [str(i) for i in range(value.shape[1])]) + "\n"
-                for i in range(value.shape[0]):
-                    output_str += f"{i}\t" + "\t".join(map(str, value[i])) + "\n"
-            else:
-                output_str += f"{key}:\n{value}\n"
-        else:
-            output_str += f"{key}: {value}\n"
-
-    output_str += (f"\nFeature list: {prizn_binary}\nNumber of features used: {prizn_binary.count('1')}\n"
-                   f"Feature status:\n")
-
-    for i in range(input_dim):
+    output_str += (f"\n\nNumber of features used: {prizn_binary.count('1')}\n"
+                   f"Feature list: {prizn_binary}\nFeature status:\n")
+    for i in range(len(prizn_binary)):
         status = "(0)" if prizn_binary[i] == '0' else "(1)"
-        output_str += f"Feature {i + 1} {status}\t{feature_names[i]}\n"
+        output_str += f"Feature {i + 1} {status}\t{feature_column_names[i]}\n"
 
-    output_str += "\nBest parameters:\n"
-    output_str += json.dumps(best_params, indent=4)
+    output_str += "\nBest parameters LogNNet:\n  "
+    output_str += '\n  '.join(f"{key}: {value}" for key, value in LogNNet_model.LogNNet_best_params.items())
 
-    if mlp_params is not None:
-        output_str += "\nMLP params:\n"
-        output_str += json.dumps(mlp_params, indent=4)
-
-    print(f"Data saved successfully to {filename}")
+    output_str += "\n\nBest MLP params:\n  "
+    output_str += '\n  '.join(f"{key}: {value}" for key, value in LogNNet_model.mlp_model.get_params().items())
 
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(output_str)
+    print(f"Report saved successfully to {filename}")
 
     return unix_time
 
 
-if __name__ == "__main__":
-    output_directory = 'LogNNet_results'
-    os.makedirs(output_directory, exist_ok=True)
 
+if __name__ == "__main__":
     print(f"Running LogNNet regression example")
 
-    input_file = os.path.join("database", input_file)
+    output_directory = 'LogNNet_results'
+    os.makedirs(output_directory, exist_ok=True)
+    input_data_file = os.path.join("database", input_file)
 
-    LogNNet_regression_calculation(input_data_file=input_file, target_column=target_column_input_file,
-                                   basic_params=LogNNet_params, output_dir=output_directory)
+    start_time = time.time()
+    X, y, feature_names = read_csv_file(file_name=input_data_file, target_column=target_column_input_file)
+    cutoff = len(X) - 3000
+    X_train, X_test = X[:cutoff], X[cutoff:]
+    y_train, y_test = y[:cutoff], y[cutoff:]
+
+    model = LogNNetRegressor(**LogNNet_params)
+    print(f'LogNNet library version: {model.LogNNet_version}')
+
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    pearson_corr, _ = pearsonr(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    metrics = {
+        "r2": float(round(r2_score(y_test, y_pred), 6)),
+        "pearson_corr": float(round(pearson_corr, 6)),
+        "mse": float(round(mse, 6)),
+        "mae": float(round(mean_absolute_error(y_test, y_pred), 6)),
+        "rmse": float(round(np.sqrt(mse), 6))
+    }
+
+    print(f"Metric '{LogNNet_params['selected_metric']}'"
+          f" = {metrics[LogNNet_params['selected_metric']]} (Test set)")
+    print(f'Computation time - {format_execution_time(start_time)}')
+    print('Calculation regression finished')
+
+    input_file_name = os.path.basename(input_data_file)
+    save_unix_time = print_and_save_results(
+        out_dir=output_directory,
+        data_filename=input_file_name,
+        target_column=target_column_input_file,
+        final_metrics=metrics,
+        starting_params=LogNNet_params,
+        LogNNet_model=model,
+        feature_column_names=feature_names,
+        compute_time=format_execution_time(start_time)
+    )
+
+    file_name = os.path.join(output_directory, f'{save_unix_time}_data_[{input_file_name}].txt')
+    print(f"Predictions data saved to {file_name}")
+
+    with open(file_name, "w") as file:
+        file.write("all_y_true\tall_y_pred\n")
+        for true, pred in zip(y_test, y_pred):
+            file.write(f"{true}\t{pred}\n")
+
+    # Functionality of writing and reading the model
+    model_file_name = os.path.join(output_directory, f'{save_unix_time}_LogNNet_model_[{input_file_name}].joblib')
+    print(f'Trained model saved in {model_file_name}')
+
+    model.export_model(file_name=model_file_name)
+
+    print('Loading the trained LogNNet model')
+    import_model = LogNNetRegressor().import_model(file_name=model_file_name)
+    y_pred_import_model = import_model.predict(X_test)
+
+    pearson_corr, _ = pearsonr(y_test, y_pred_import_model)
+    mse = mean_squared_error(y_test, y_pred_import_model)
+    metrics = {
+        "r2": float(round(r2_score(y_test, y_pred_import_model), 6)),
+        "pearson_corr": float(round(pearson_corr, 6)),
+        "mse": float(round(mse, 6)),
+        "mae": float(round(mean_absolute_error(y_test, y_pred_import_model), 6)),
+        "rmse": float(round(np.sqrt(mse), 6))
+    }
+
+    print(f"Metric '{LogNNet_params['selected_metric']}' = {metrics[LogNNet_params['selected_metric']]} "
+          f"(From imported model on test set)")
+

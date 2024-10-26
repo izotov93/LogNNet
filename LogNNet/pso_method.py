@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Thu Aug 17 10:00:00 2024
+Created on Aug 17 10:00:00 2024
+Modified on Oct 18 17:00 2024
+Modified on Oct 23 15:00 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
@@ -11,16 +13,13 @@ Created on Thu Aug 17 10:00:00 2024
 import numpy as np
 import signal
 from LogNNet.mlp_evaluation import evaluate_mlp_mod
-from multiprocessing import cpu_count, Pool
-import random
+from multiprocessing import cpu_count, Pool, Manager
 
 stop_flag = False
-
 
 def signal_handler(sig, frame):
     global stop_flag
     stop_flag = True
-    print("Optimization stopping...")
 
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -40,6 +39,7 @@ class Particle:
         self.best_position = self.position.copy()
         self.fitness = float('-inf')
         self.best_fitness = None
+
         self.best_model = None
         self.input_layers_data = None
 
@@ -64,54 +64,31 @@ class Particle:
                 self.position[i] = np.clip(self.position[i], param_range[0], param_range[1])
 
 
-def fitness_function(particle_position: list, X: np.ndarray, y: np.ndarray,
-                     num_folds: int, selected_metric: str, selected_metric_class: int,
-                     target: str, mlp_params: dict, static_features=None) -> (float, object, dict):
+def find_best_parameters(selected_metric: str, best_fitness: float, particle: Particle):
     """
-    Evaluate the fitness of a particle based on a machine learning model's performance.
+    Updates the best fitness and position based on the provided metric and the particle's performance.
 
-        :param particle_position: (list or array-like): A list or array that contains the
-                    hyperparameters of the model.
-        :param X: (np.ndarray): The input features dataset.
-        :param y: (np.ndarray): The target values (class labels in classification, real numbers in regression).
-        :param num_folds: (int): The number of folds to use for cross-validation.
-        :param selected_metric: (str): The metric to be used for evaluating the model performance.
-        :param selected_metric_class: (int): Identifies the target class for multi-class classification metrics.
-        :param target: (str): The type of  task: 'Regressor' for regression or 'Classifier' for classification.
-        :param mlp_params: (dict): A dictionary containing the mlp parameters.
-        :param static_features: (list or None, optional): The static features to be used in the model
-        :return: (tuple): A tuple containing the params:
-                - res_metric : (float) The value of the selected metric indicating the fitness of
-                                the model configuration.
-                - model: (object) The trained MLP model.
-                - input_layers_data: (dict) Data related to the input layers,
-                        including weights W and other normalization parameters.
+        :param selected_metric: (str): The metric used to evaluate fitness. It supports metrics that indicate
+            either minimization (like "mse", "mae", "rmse") or maximization (any other metric).
+        :param best_fitness: (float): The current best fitness value found.
+        :param particle: (object): The particle object.
+        :return: A tuple containing:
+            - best_position (array-like): The updated best position.
+            - best_fitness (float): The updated the best fitness value.
     """
-    params = {
-        'hidden_layer_sizes': (int(particle_position[5]), int(particle_position[6])),
-        'learning_rate_init': float(particle_position[7]),
-        'max_iter': int(particle_position[8])
-    }
+    best_position, best_model = None, None
 
-    if mlp_params is not None:
-        params.update(mlp_params)
+    if selected_metric in ["mse", "mae", "rmse"]:
+        is_better = (best_fitness is None or particle.fitness < best_fitness)
+    else:
+        is_better = (best_fitness is None or particle.fitness > best_fitness)
 
-    metrics, model, input_layers_data = evaluate_mlp_mod(X, y, params, num_folds=num_folds,
-                                                         num_rows_W=int(particle_position[0]),
-                                                         Zn0=particle_position[1],
-                                                         Cint=particle_position[2],
-                                                         Bint=particle_position[3],
-                                                         Lint=particle_position[4],
-                                                         prizn=int(particle_position[9]),
-                                                         n_f=int(particle_position[10]),
-                                                         ngen=int(particle_position[11]),
-                                                         target=target,
-                                                         static_features=static_features)
+    if is_better:
+        best_fitness = particle.fitness
+        best_position = particle.position.copy()
+        best_model = particle.best_model.copy()
 
-    res_metric = metrics[selected_metric] if selected_metric_class is None \
-        else metrics[selected_metric][selected_metric_class]
-
-    return res_metric, model, input_layers_data
+    return best_position, best_fitness, best_model
 
 
 def optimize_particle(args) -> Particle:
@@ -128,9 +105,31 @@ def optimize_particle(args) -> Particle:
 
     particle.update_velocity(global_best_position)
     particle.update_position(param_ranges)
-    particle.fitness, model, input_layers_data = fitness_function(particle.position, X, y, num_folds,
-                                                                  selected_metric, selected_metric_class,
-                                                                  target, mlp_params, static_features)
+
+    params = {
+        'hidden_layer_sizes': tuple(int(x) for x in particle.position[10:]),
+        'learning_rate_init': float(particle.position[5]),
+        'max_iter': int(particle.position[6])
+    }
+
+    if mlp_params is not None:
+        params.update(mlp_params)
+
+    particle.fitness, mlp_model = evaluate_mlp_mod(X=X, y=y,
+                                                   mlp_params=params,
+                                                   num_folds=num_folds,
+                                                   num_rows_W=int(particle.position[0]),
+                                                   Zn0=particle.position[1],
+                                                   Cint=particle.position[2],
+                                                   Bint=particle.position[3],
+                                                   Lint=particle.position[4],
+                                                   prizn=int(particle.position[7]),
+                                                   n_f=int(particle.position[8]),
+                                                   ngen=int(particle.position[9]),
+                                                   selected_metric=selected_metric,
+                                                   selected_metric_class=selected_metric_class,
+                                                   target=target,
+                                                   static_features=static_features)
 
     if selected_metric in ['mse', 'mae', 'rmse']:
         is_better = (particle.best_fitness is None or particle.fitness < particle.best_fitness)
@@ -140,16 +139,15 @@ def optimize_particle(args) -> Particle:
     if is_better:
         particle.best_fitness = particle.fitness
         particle.best_position = particle.position.copy()
-        particle.best_model = model
-        particle.input_layers_data = input_layers_data
+        particle.best_model = mlp_model
 
     return particle
 
 
 def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
-        selected_metric: str, selected_metric_class: (int, None), dimensions: int,
+        selected_metric: str, selected_metric_class: (int, None),
         num_particles: int, num_iterations: int, num_threads=cpu_count(),
-        target='Regressor', mlp_params=None, static_features=(list, None)) -> (np.ndarray, float, object, dict):
+        target='Regressor', mlp_params=None, static_features=(list, None), **kwargs) -> (np.ndarray, float):
     """
     Performs Particle Swarm Optimization (PSO) for hyperparameter tuning of LogNNet models.
 
@@ -163,8 +161,6 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         :param selected_metric: (str): A string representing the metric to be used for evaluating the
             fitness of particles.
         :param selected_metric_class: (int, None): For classification tasks, this defines the class to optimize.
-        :param dimensions: (int): The number of hyperparameters to optimize, corresponding to the number of
-            dimensions in the particle space.
         :param num_particles: (int): The number of particles in the swarm that will explore the hyperparameter space.
         :param num_iterations: (int): The number of iterations for the optimization process.
         :param num_threads: (int, optional): he number of threads to use for parallel execution.
@@ -172,21 +168,22 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         :param target: (str, optional): The type of  task: 'Regressor' for regression or
             'Classifier' for classification. Default is 'Regressor'.
         :param mlp_params: (dict): A dictionary containing the mlp parameters.
-        :param static_features: (None or list, optional): -
-        :return: (tuple): A tuple containing the params:
+        :param static_features: (None or list, optional): Parameter containing a list of features of the input
+            vector used in the PSO method. If the value None means that all features are used.
+        :return: A tuple containing the params:
             - global_best_position: (np.ndarray): The best set of hyperparameters found during optimization.
             - global_best_fitness: (float): The fitness value of the best hyperparameter set.
-            - global_best_model: (object) The best-trained model corresponding to the best hyperparameter set.
-            - input_layers_data : (dict): Data related to the input layers,
-                including weights W and other normalization parameters.
+
     """
 
-    rand_particles = int(0.2 * num_particles)
+    use_debug_mode = kwargs.get('use_debug_mode', False)
 
+    rand_particles = int(0.2 * num_particles)
     particles = [Particle(param_ranges) for _ in range(num_particles)]
-    global_best_position = np.random.rand(dimensions)
+    global_best_position = np.random.rand(len(param_ranges))
     global_best_fitness = None
-    global_best_model, input_layers_data = None, None
+
+    lock = Manager().Lock()
 
     with Pool(num_threads) as pool:
 
@@ -203,27 +200,30 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
 
             results = pool.map(optimize_particle, args_list)
 
-            for i in random.sample(range(len(results)), rand_particles):
+            for i in np.random.choice(len(results), rand_particles, replace=False):
                 results[i].is_random_velocity = True
 
-            for particle in results:
-                if selected_metric in ["mse", "mae", "rmse"]:
-                    is_better = (global_best_fitness is None or particle.fitness < global_best_fitness)
-                else:
-                    is_better = (global_best_fitness is None or particle.fitness > global_best_fitness)
+            with lock:
+                for particle in results:
+                    if selected_metric in ["mse", "mae", "rmse"]:
+                        is_better = (global_best_fitness is None or particle.fitness < global_best_fitness)
+                    else:
+                        is_better = (global_best_fitness is None or particle.fitness > global_best_fitness)
 
-                if is_better:
-                    global_best_fitness = particle.fitness
-                    global_best_position = particle.position.copy()
-                    global_best_model = particle.best_model
-                    input_layers_data = particle.input_layers_data
+                    if is_better:
+                        global_best_fitness = particle.fitness
+                        global_best_position = particle.position.copy()
+                        global_best_model = particle.best_model
 
             print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 6)}")
+
+            if use_debug_mode:
+                print(f'Param best model after interation {global_best_model.get_params()}')
 
         pool.close()
         pool.join()
 
-    return global_best_position, global_best_fitness, global_best_model, input_layers_data
+    return global_best_position, global_best_fitness
 
 
 def main():
