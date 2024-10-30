@@ -255,6 +255,7 @@ class BaseLogNNet(object):
             lognnet_params=self.LogNNet_best_params,
             selected_metric=self.basic_params['selected_metric'],
             selected_metric_class=self.basic_params['selected_metric_class'],
+            static_features=self.basic_params['static_features'],
             target=self.basic_params['target'])
 
         print(f"Best value metric '{self.basic_params['selected_metric']}' = {round(res_metric, 6)} (Train set)")
