@@ -4,6 +4,7 @@
 Created on Aug 17 10:00 2024
 Modified on Oct 18 17:00 2024
 Modified on Oct 23 15:00 2024
+Modified on Nov 07 15:35 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
@@ -12,7 +13,7 @@ Modified on Oct 23 15:00 2024
 
 import numpy as np
 from sklearn.neural_network import MLPRegressor, MLPClassifier
-from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.metrics import matthews_corrcoef, precision_score, recall_score, f1_score, accuracy_score
 from scipy.stats import pearsonr
@@ -21,7 +22,7 @@ from LogNNet import utility
 
 def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, mlp_params: dict, selected_metric:str, selected_metric_class=None,
                      num_folds=2, num_rows_W=10, Zn0=100, Cint=45, Bint=-43, Lint=3025, prizn=123, n_f=100,
-                     ngen=100, target='Regressor', static_features=None) -> (float, object):
+                     ngen=100, target='Regressor', static_features=None, test_size_in_fold=0.2) -> (float, object):
     """
     Evaluates Multi-Layer Perceptron (MLP) models using cross-validation.
 
@@ -43,6 +44,8 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, mlp_params: dict, selected_me
         :param target: (str, optional): The type of prediction task: 'Regressor' for regression or
             'Classifier' for classification. Default value 'Regressor'.
         :param static_features: (list or None, optional): List of input vector features to be used. Default is None.
+        :param test_size_in_fold: (float, optional): Size of test sample inside in fold. Only valid when num_folds > 1.
+            Default value to 0.2.
         :return: (tuple): Tuple containing the params:
                 - metrics: (dict) Performance metrics of the model, varying depending on whether the
             task is regression or classification.
@@ -53,13 +56,7 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, mlp_params: dict, selected_me
 
     input_dim = X.shape[1]
     all_y_true, all_y_pred = [], []
-
-    if num_folds == 1:
-        # np.random.permutation(len(X))
-        list_array = np.arange(len(X))
-        kf = [(list_array, list_array)]
-    else:
-        kf = KFold(n_splits=num_folds, shuffle=True, random_state=42).split(X)
+    mlp_model = None
 
     gray_prizn = utility.decimal_to_gray(prizn)
     prizn_binary = utility.binary_representation(gray_prizn, input_dim)
@@ -71,21 +68,26 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, mlp_params: dict, selected_me
         if prizn_binary[i] == '0':
             X[:, i] = 0
 
-    use_reservoir = True
-    if num_rows_W != 0:
+    use_reservoir = (num_rows_W != 0)
+    if use_reservoir:
         W = utility.initialize_W(num_rows_W=num_rows_W,
-                                 input_dim=input_dim,
+                                 input_dim=X.shape[1],
                                  Zn0=Zn0,
                                  Cint=Cint,
                                  Bint=Bint,
                                  Lint=Lint)
-    else:
-        use_reservoir = False
 
-    mlp_model = None
-    for train_index, test_index in kf:
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+    for _ in range(num_folds):
+        if num_folds == 1:
+            X_train, X_test = X, X
+            y_train, y_test = y, y
+        else:
+            indices = np.random.permutation(len(X))
+            X, y = X[indices], y[indices]
+            X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                               test_size=test_size_in_fold,
+                                                               stratify=y if target == "Classifier" else None,
+                                                               random_state=42)
 
         X_train_min, X_train_max = np.min(X_train, axis=0), np.max(X_train, axis=0)
         denominator = X_train_max - X_train_min
@@ -112,11 +114,7 @@ def evaluate_mlp_mod(X: np.ndarray, y: np.ndarray, mlp_params: dict, selected_me
         else:
             X_new_train_Sh, X_new_test_Sh = X_train, X_test
 
-        if target == 'Regressor':
-            mlp_model = MLPRegressor(**mlp_params)
-        elif target == 'Classifier':
-            mlp_model = MLPClassifier(**mlp_params)
-
+        mlp_model = MLPRegressor(**mlp_params) if target == 'Regressor' else MLPClassifier(**mlp_params)
         mlp_model.fit(X_new_train_Sh, y_train)
         y_pred = mlp_model.predict(X_new_test_Sh)
 
@@ -155,7 +153,6 @@ def lognnet_evaluate_by_params(X: np.ndarray, y: np.ndarray, mlp_params: dict,
             other normalization parameters.
     """
     W, Shmin, Shmax = None, None, None
-    mlp_model, metrics = None, None
 
     gray_prizn = utility.decimal_to_gray(lognnet_params['prizn'])
     prizn_binary = utility.binary_representation(gray_prizn, X.shape[1])
@@ -192,11 +189,7 @@ def lognnet_evaluate_by_params(X: np.ndarray, y: np.ndarray, mlp_params: dict,
     else:
         X_new_train_Sh = utility.normalize_data(X)
 
-    if target == 'Regressor':
-        mlp_model = MLPRegressor(**mlp_params)
-    elif target == 'Classifier':
-        mlp_model = MLPClassifier(**mlp_params)
-
+    mlp_model = MLPRegressor(**mlp_params) if target == 'Regressor' else MLPClassifier(**mlp_params)
     mlp_model.fit(X_new_train_Sh, y)
     y_pred = mlp_model.predict(X_new_train_Sh)
 

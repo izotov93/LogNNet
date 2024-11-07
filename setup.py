@@ -19,11 +19,8 @@ requirements = [
 setup(
     name='LogNNet',
     version=__version__,
-    description='This package implements the lognet neural network, which uses chaotic transformations in the '
-                'weight matrix to more effectively recognize patterns in data. With the ability to generate '
-                'weight coefficients on the fly from only four parameters, it is effective on devices with '
-                'limited resources and is suitable for classification, regression, time series '
-                'forecasting, and other areas.',
+    description='This package implements the LogNNet neural network, which uses chaotic transformations in the '
+                'weight matrix to more effectively recognize patterns in data.',
     long_description=readme(),
     long_description_content_type="text/markdown",
     url='https://github.com/izotov93/LogNNet',

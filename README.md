@@ -58,11 +58,7 @@ This parameter defines the conditions for selecting features in the input vector
 * A range of feature indices as a tuple (e.g., (1, 100) means the PSO method will determine the best features from index 1 to 100).
 * A single integer indicating the number of features to be used (e.g., 20 means the PSO method will select the best combination of 20 features). If set to -1, all features from the input vector will be used.
 
-6. `ngen` (tuple of int or singular int value, optional), default=(1, 500)
-
-The range of generations for the optimization algorithm that will be used to find the optimal model parameters. [PSO]
-
-7. `selected_metric` (str value) 
+6. `selected_metric` (str value, optional) 
 
 The selected metric for evaluating the model's performance.
 
@@ -80,24 +76,24 @@ For classification (LogNNetClassifier model), input of the following metrics is 
 * 'f1': F1 score.
 * 'accuracy': Accuracy score of the classifier. (default)
 
-8. `selected_metric_class` (int or None, optional) Default is None
+7. `selected_metric_class` (int or None, optional) Default is None
 
 Select a class metric for training model. Supports input of the following metrics precision, recall and f1 for the LogNNetClassifier class.
 **When using LogNNetRegressor model is not used.**
 
-9. `num_folds` (int value, optional), default=1
+8. `num_folds` (int value, optional), default=1
 
 The number of folds for cross-validation of the model.
 
-10. `num_particles` (int value, optional), default=10
+9. `num_particles` (int value, optional), default=10
 
 The number of particles in the Particle Swarm Optimization (PSO) method, used for parameter optimization.
 
-11. `num_threads` (int value, optional), default=10
+10. `num_threads` (int value, optional), default=10
 
 The number of threads to be used during model training for parallel data processing.
 
-12. `num_iterations` (int value, optional), default=10
+11. `num_iterations` (int value, optional), default=10
 
 The number of iterations of the optimization algorithm.
 
@@ -111,7 +107,11 @@ The parameter responsible for the use of a chaotic reservoir in calculations. If
 
 The parameter responsible for additional output of service information during the LogNNet library operation.
 
-3. `**`  MLP-model parameters from the scikit-learn library. 
+3. `test_size_in_fold` (float value, optional), default=0.2
+
+The parameter responsible for the size of the test set when using k-fold validation (Parameter `num_folds`>1). Limits of parameter change (0.01 to 0.9).
+
+4. `**`  MLP-model parameters from the scikit-learn library. 
 
 The LogNNetRegressor object additionally supports [MLPRegressor](https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPRegressor.html) object parameters.
 
@@ -135,7 +135,6 @@ model = LogNNetRegressor(
     learning_rate=(0.001, 0.1),
     n_epochs=(5, 550),
     n_f=-1,
-    ngen=(1, 500),
     selected_metric='r2',
     num_folds=1,
     num_particles=10,
@@ -144,7 +143,6 @@ model = LogNNetRegressor(
 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
-
 ....
 ```
 
@@ -163,7 +161,6 @@ model = LogNNetClassifier(
     learning_rate=(0.001, 0.1),
     n_epochs=(5, 550),
     n_f=-1,
-    ngen=(1, 500),
     selected_metric='accuracy',
     selected_metric_class=None,
     num_folds=1,
@@ -173,14 +170,14 @@ model = LogNNetClassifier(
 
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
-
 ...
 ```
 
 ### Import/export of trained LogNNet model
 
-The functionality of import/export of the LogNNet model after executing the "fit" function has been implemented. For the LogNNetRegressor and LogNNetClassifier implementations, the functionality is similar.
-For the example, we will use the LogNNetRegressor model.
+In this project, we have implemented the functionality for importing and exporting the LogNNet model after executing the "fit" function. This allows users to save trained models for later use without the need for retraining.
+
+The import/export capability is an important part of the machine learning development workflow, as it facilitates model sharing between different developers and environments, and conveniently preserves intermediate results. 
 
 Code for saving model to file:
 ```python
@@ -194,7 +191,7 @@ model.fit(X_train, y_train)
 model.export_model(file_name='LogNNet_model.joblib')
 ....
 ```
-If the "file_name" parameter is not specified or is None, a model with the name will be created 'timestamp_LogNNet_model.joblib'.
+If the "file_name" parameter is not specified or is None, a model with the name will be created `{unix_time}_LogNNet_model.joblib`.
 
 Code to load a trained model from a file:
 ```python
@@ -204,7 +201,25 @@ model = LogNNetRegressor().import_model(file_name='LogNNet_model.joblib')
 ....
 ```
 
-## How to use example files
+### Functionality of perceptron training
+
+This library implements the functionality for retraining the perceptron layer of the LogNNet model while keeping the reservoir parameters fixed. This function is particularly useful for calculating metrics in a k-fold cross-validation setting.
+
+The perceptron retraining process utilizes an already trained LogNNet model, which contains the optimal reservoir and other parameters obtained during the main training phase. The function reloads these pre-trained parameters, ensuring the reservoir remains unchanged, and reinitialized training for the perceptron layer using new input data X and target labels y.
+
+```python
+from LogNNet.neural_network import LogNNetClassifier
+...
+# Importing the finished model
+model = LogNNetClassifier().import_model(file_name='LogNNet_model.joblib')
+
+model.fit_MLP(X, y)
+y_pred = model.predict(X)
+....
+```
+
+
+## How to use examples files
 
 1. Install the package LogNNet [*](https://github.com/izotov93/LogNNet?tab=readme-ov-file#installation)
 2. Download file [example_LogNNet_classification.py](https://github.com/izotov93/LogNNet/blob/master/example_LogNNet_classification.py) or / and [example_LogNNet_regression.py](https://github.com/izotov93/LogNNet/blob/master/example_LogNNet_regression.py)

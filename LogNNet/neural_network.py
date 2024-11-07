@@ -4,6 +4,7 @@
 Created on Aug 17 10:00:00 2024
 Modified on Oct 18 17:00 2024
 Modified on Oct 23 15:00 2024
+Modified on Nov 07 15:35 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
@@ -146,7 +147,6 @@ class BaseLogNNet(object):
                  learning_rate_init: (tuple, float),
                  n_epochs: (tuple, int),
                  n_f: (tuple, int),
-                 ngen: (tuple, int),
                  selected_metric: str,
                  selected_metric_class: (None, int),
                  num_folds: int,
@@ -165,7 +165,6 @@ class BaseLogNNet(object):
         self._use_debug_mode = validate_param(kwargs.get('use_debug_mode', False), bool,
                                        name_param='use_debug_mode')
         self.mlp_params = validate_param(kwargs, dict, name_param='mlp_params')
-        use_reservoir = validate_param(use_reservoir, bool, name_param='use_reservoir')
 
         self._param_ranges = {
             'num_rows_W': validate_param(num_rows_W, int, check_limits=True,
@@ -179,7 +178,7 @@ class BaseLogNNet(object):
             'epochs': validate_param(n_epochs, int, check_limits=True, name_param='n_epochs'),
             'prizn': (0, 1),
             'n_f': n_f,
-            'ngen': validate_param(ngen, int, check_limits=True, name_param='ngen')
+            'ngen': (1, 500),
         }
 
         limit_hidden_layers = validate_limit_hidden_layers(limit_hidden_layers)
@@ -200,8 +199,13 @@ class BaseLogNNet(object):
             'static_features': None,
             'use_reservoir': use_reservoir,
             'use_debug_mode': self._use_debug_mode,
-            'mlp_params': self.mlp_params
+            'mlp_params': self.mlp_params,
+            'test_size_in_fold': validate_param(kwargs.get('test_size_in_fold', 0.2), float,
+                                        name_param='test_size_in_fold'),
         }
+
+        if self.basic_params['test_size_in_fold'] > 0.9:
+            raise ValueError("Invalid value: 'test_size_in_fold' must be between 0 and 0.9")
 
     def get_version(self) -> str:
         """
@@ -258,7 +262,7 @@ class BaseLogNNet(object):
             static_features=self.basic_params['static_features'],
             target=self.basic_params['target'])
 
-        print(f"Best value metric '{self.basic_params['selected_metric']}' = {round(res_metric, 6)} (Train set)")
+        print(f"Metric '{self.basic_params['selected_metric']}' = {round(res_metric, 6)} (Train set)")
 
         keys_to_remove = ['X', 'y', 'use_debug_mode']
         self.basic_params = {key: value for key, value in self.basic_params.items() if key not in keys_to_remove}
@@ -339,18 +343,17 @@ class BaseLogNNet(object):
         Save the trained LogNNet model and its parameters to a file.
 
         This method serializes and saves the best model and its associated
-        parameters based on the specified type. The user can specify
-        either 'max' to save the model with maximum performance or 'min'
-        to save it with minimized parameters.
+        parameters based on the specified type.
 
             :param file_name: (str or None): file name of the saved model.
                 If none, the name is generated automatically with a prefix in the form of a timestamp.
             :return: (None) A model with the name - file_name
-                or in the format will be generated '{timestamp}_LogNNet_model_{type_of_model}.joblib'
+                or in the format will be generated '{timestamp}_LogNNet_model.joblib'
         """
 
+        file_name = file_name if file_name is not None else f'{int(time.time())}_LogNNet_model.joblib'
         if not isinstance(file_name, str) or not file_name.endswith('.joblib'):
-            raise TypeError('file_name must be a string and  end with "*.joblib"')
+            raise TypeError('Parameter "file_name" must be a string and end with "*.joblib"')
 
         if self.input_layer_data is None or self.mlp_model is None or not self.LogNNet_best_params:
             raise Exception("The LogNNet neural network model is not trained. "
@@ -386,11 +389,10 @@ class BaseLogNNet(object):
         else:
             raise ValueError('Param "type_of_model" is not correct. Valid options: "min" or "max"')
 
-        filename = file_name if file_name is not None else f'{int(time.time())}_LogNNet_model_{type_of_model}.joblib'
-        joblib.dump(value=value, filename=filename)
+        joblib.dump(value=value, filename=file_name)
 
         if self._use_debug_mode:
-            print(f'Model successfully saved under file name {filename}')
+            print(f'Model successfully saved under file name {file_name}')
 
     def import_model(self, file_name: str) -> object:
         """
@@ -405,10 +407,10 @@ class BaseLogNNet(object):
             :return: (object) Fills an example of a class with data.
         """
 
+        if not isinstance(file_name, str):
+            raise TypeError('Parameter "file_name" must be a string.')
         if not os.path.isfile(file_name):
             raise ValueError(f'File "{file_name}" not found. Check the file path and try again.')
-        if not isinstance(file_name, str):
-            raise TypeError('file_name must be a string.')
 
         model_data = joblib.load(file_name)
 
@@ -436,6 +438,32 @@ class BaseLogNNet(object):
 
         return self
 
+    def fit_MLP(self, X, y):
+        """
+        Fit the model MLP to data matrix X and targets y.
+            :param X: (array-like): The input data.
+            :param y: (array-like): The target values (class labels in classification, real numbers in regression).
+            :return: (object): Returns a trained (MLPRegressor or MLPClassifier) model.
+        """
+
+        res_metric, self.mlp_model, self.input_layer_data = lognnet_evaluate_by_params(
+            X=X,
+            y=y,
+            mlp_params=self.mlp_model.get_params(),
+            lognnet_params=self.LogNNet_best_params,
+            selected_metric=self.basic_params['selected_metric'],
+            selected_metric_class=self.basic_params['selected_metric_class'],
+            static_features=self.basic_params['static_features'],
+            target=self.basic_params['target'])
+
+        if self.basic_params.get('use_debug_mode', False):
+            print(f"Metric '{self.basic_params['selected_metric']}' = {round(res_metric, 6)} (Fit MLP)")
+
+        keys_to_remove = ['X', 'y', 'use_debug_mode']
+        self.basic_params = {key: value for key, value in self.basic_params.items() if key not in keys_to_remove}
+
+        return self.mlp_model
+
 
 class LogNNetRegressor(BaseLogNNet):
     def __init__(self,
@@ -444,7 +472,6 @@ class LogNNetRegressor(BaseLogNNet):
                  learning_rate_init=(0.001, 0.1),
                  n_epochs=(5, 550),
                  n_f=-1,
-                 ngen=(1, 500),
                  selected_metric='r2',
                  num_folds=1,
                  num_particles=10,
@@ -473,9 +500,6 @@ class LogNNetRegressor(BaseLogNNet):
                         PSO method will select the best combination of 20 features). If set to -1,
                         all features from the input vector will be used.
                 Default value -1.
-            :param ngen: (array-like of int or singular int value, optional): The range of generations for
-                the optimization algorithm that will be used to find the optimal model parameters.
-                Default value to (1, 500).
             :param selected_metric: (str, optional): The selected metric for evaluating the model's performance.
                 Support metrics:
                     1. 'r2': R-squared score indicating the proportion of variance explained by the model.
@@ -510,7 +534,6 @@ class LogNNetRegressor(BaseLogNNet):
             learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
-            ngen=ngen,
             selected_metric=selected_metric,
             selected_metric_class=None,
             num_folds=num_folds,
@@ -529,7 +552,6 @@ class LogNNetClassifier(BaseLogNNet):
                  learning_rate_init=(0.001, 0.1),
                  n_epochs=(5, 550),
                  n_f=-1,
-                 ngen=(1, 500),
                  selected_metric='accuracy',
                  selected_metric_class=None,
                  num_folds=1,
@@ -559,9 +581,6 @@ class LogNNetClassifier(BaseLogNNet):
                         PSO method will select the best combination of 20 features). If set to -1,
                         all features from the input vector will be used.
                 Default value to -1.
-            :param ngen: (array-like of int or singular int value, optional): The range of generations for the
-                optimization algorithm that will be used to find the optimal model parameters.
-                Default value to (1, 500).
             :param selected_metric: (str, optional): The selected metric for evaluating the model's performance.
                 Support metrics:
                 1. 'mcc': Matthews Correlation Coefficient indicating classification quality.
@@ -603,7 +622,6 @@ class LogNNetClassifier(BaseLogNNet):
             learning_rate_init=learning_rate_init,
             n_epochs=n_epochs,
             n_f=n_f,
-            ngen=ngen,
             selected_metric=selected_metric,
             selected_metric_class=selected_metric_class,
             num_folds=num_folds,

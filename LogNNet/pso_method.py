@@ -4,6 +4,7 @@
 Created on Aug 17 10:00:00 2024
 Modified on Oct 18 17:00 2024
 Modified on Oct 23 15:00 2024
+Modified on Nov 07 15:35 2024
 
 @author: Yuriy Izotov
 @author: Andrei Velichko
@@ -100,8 +101,8 @@ def optimize_particle(args) -> Particle:
                     best position, and related model information.
     """
 
-    (particle, global_best_position, param_ranges, X, y, num_folds,
-     selected_metric, selected_metric_class, target, mlp_params, static_features) = args
+    (particle, global_best_position, param_ranges, X, y, num_folds, selected_metric, selected_metric_class,
+     target, mlp_params, static_features, test_size_in_fold) = args
 
     particle.update_velocity(global_best_position)
     particle.update_position(param_ranges)
@@ -129,7 +130,8 @@ def optimize_particle(args) -> Particle:
                                                    selected_metric=selected_metric,
                                                    selected_metric_class=selected_metric_class,
                                                    target=target,
-                                                   static_features=static_features)
+                                                   static_features=static_features,
+                                                   test_size_in_fold=test_size_in_fold)
 
     if selected_metric in ['mse', 'mae', 'rmse']:
         is_better = (particle.best_fitness is None or particle.fitness < particle.best_fitness)
@@ -144,10 +146,10 @@ def optimize_particle(args) -> Particle:
     return particle
 
 
-def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
-        selected_metric: str, selected_metric_class: (int, None),
-        num_particles: int, num_iterations: int, num_threads=cpu_count(),
-        target='Regressor', mlp_params=None, static_features=(list, None), **kwargs) -> (np.ndarray, float):
+def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict, selected_metric: str,
+        selected_metric_class: (int, None), num_particles: int, num_iterations: int, num_threads=cpu_count(),
+        target='Regressor', mlp_params=None, static_features=(list, None), test_size_in_fold=0.2,
+        **kwargs) -> (np.ndarray, float):
     """
     Performs Particle Swarm Optimization (PSO) for hyperparameter tuning of LogNNet models.
 
@@ -170,6 +172,8 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
         :param mlp_params: (dict): A dictionary containing the mlp parameters.
         :param static_features: (None or list, optional): Parameter containing a list of features of the input
             vector used in the PSO method. If the value None means that all features are used.
+        :param test_size_in_fold: (float, optional): Size of test sample inside in fold. Only valid when num_folds > 1.
+            Default value to 0.2.
         :return: A tuple containing the params:
             - global_best_position: (np.ndarray): The best set of hyperparameters found during optimization.
             - global_best_fitness: (float): The fitness value of the best hyperparameter set.
@@ -196,7 +200,7 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
 
             args_list = [(particle, global_best_position, param_ranges, X, y, num_folds,
                           selected_metric, selected_metric_class, target,
-                          mlp_params, static_features) for particle in particles]
+                          mlp_params, static_features, test_size_in_fold) for particle in particles]
 
             results = pool.map(optimize_particle, args_list)
 
@@ -216,7 +220,6 @@ def PSO(X: np.ndarray, y: np.ndarray, num_folds: int, param_ranges: dict,
                         global_best_model = particle.best_model
 
             print(f"Iteration {iteration + 1}/{num_iterations}, Best Fitness: {round(global_best_fitness, 6)}")
-
             if use_debug_mode:
                 print(f'Param best model after interation {global_best_model.get_params()}')
 

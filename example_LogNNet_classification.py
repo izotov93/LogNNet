@@ -31,13 +31,13 @@ LogNNet_params = {
     'learning_rate_init': (0.001, 0.1),
     'n_epochs': (5, 550),
     'n_f': -1,
-    'ngen': (1, 500),
     'selected_metric': 'accuracy',
     'selected_metric_class': None,
     'num_folds': 1,
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
+    'tol': 1e-06,
 }
 
 
