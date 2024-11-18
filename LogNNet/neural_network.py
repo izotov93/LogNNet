@@ -172,7 +172,7 @@ class BaseLogNNet(object):
             'Zn0': (-499, 499) if use_reservoir else (0, 0),
             'Cint': (-499, 499) if use_reservoir else (0, 0),
             'Bint': (-499, 499) if use_reservoir else (0, 0),
-            'Lint': (100, 10000)if use_reservoir else (0, 0),
+            'Lint': (100, 10000) if use_reservoir else (0, 0),
             'learning_rate_init': validate_param(learning_rate_init, float,
                                                  check_limits=True, name_param='learning_rate_init'),
             'epochs': validate_param(n_epochs, int, check_limits=True, name_param='n_epochs'),
@@ -267,7 +267,7 @@ class BaseLogNNet(object):
         keys_to_remove = ['X', 'y', 'use_debug_mode']
         self.basic_params = {key: value for key, value in self.basic_params.items() if key not in keys_to_remove}
 
-        return self.mlp_model
+        return self
 
     def predict(self, X) -> np.ndarray:
         """
@@ -464,6 +464,28 @@ class BaseLogNNet(object):
 
         return self.mlp_model
 
+    def get_mask_feature(self) -> str:
+        """
+        Returns the mask of the used features of the input vector
+            :return: (str): Mask feature
+        """
+        if self.input_layer_data is None:
+            raise Exception("The LogNNet neural network model is not trained. "
+                            "Use the 'fit' function or import the LogNNet model")
+
+        return self.input_layer_data['prizn_binary']
+
+    def get_LogNNet_params(self) -> dict:
+        """
+        Returns the best parameters LogNNet was trained with.
+            :return: (dict): Parameters of the LogNNet model.
+        """
+
+        if len(self.LogNNet_best_params) == 0:
+            raise Exception("The LogNNet neural network model is not trained. "
+                            "Use the 'fit' function or import the LogNNet model")
+
+        return self.LogNNet_best_params
 
 class LogNNetRegressor(BaseLogNNet):
     def __init__(self,
@@ -544,7 +566,6 @@ class LogNNetRegressor(BaseLogNNet):
 
         self.basic_params['target'] = 'Regressor'
 
-
 class LogNNetClassifier(BaseLogNNet):
     def __init__(self,
                  num_rows_W=(10, 150),
@@ -612,7 +633,7 @@ class LogNNetClassifier(BaseLogNNet):
 
         if (any(keyword in selected_metric for keyword in ["precision", "recall", "f1"])
                 and selected_metric_class is None):
-            selected_metric_class = 0
+            selected_metric_class = 1
         elif any(keyword in selected_metric for keyword in ["mcc", "accuracy"]):
             selected_metric_class = None
 

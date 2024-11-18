@@ -31,14 +31,17 @@ LogNNet_params = {
     'learning_rate_init': (0.001, 0.1),
     'n_epochs': (5, 550),
     'n_f': -1,
-    'selected_metric': 'accuracy',
-    'selected_metric_class': None,
+    'selected_metric': 'mcc',
+    'selected_metric_class': None, # defaults to 1 for F1, Recall, and Precision (replace with the number of the critical class)
     'num_folds': 1,
     'num_particles': 10,
     'num_threads': 10,
     'num_iterations': 10,
     'tol': 1e-06,
 }
+
+if LogNNet_params['selected_metric'] in ['accuracy', 'mcc']:
+    LogNNet_params['selected_metric_class'] = None
 
 
 def format_execution_time(start_time: float) -> str:
@@ -219,9 +222,7 @@ if __name__ == "__main__":
     str_value_metric = metrics[LogNNet_params['selected_metric']] if LogNNet_params['selected_metric_class'] is None \
         else round(metrics[LogNNet_params['selected_metric']][LogNNet_params['selected_metric_class']], 6)
 
-    print(f"Metric '{LogNNet_params['selected_metric']}{str_metric_class}'"
-          f" = {str_value_metric} (Test set)")
-
+    print(f"Metric '{LogNNet_params['selected_metric']}{str_metric_class}' = {str_value_metric} (Test set)")
     print(f'Computation time - {format_execution_time(start_time)}')
     print('Calculation classification finished')
 
@@ -261,5 +262,5 @@ if __name__ == "__main__":
     str_value_metric = metrics[LogNNet_params['selected_metric']] if LogNNet_params['selected_metric_class'] is None \
         else round(metrics[LogNNet_params['selected_metric']][LogNNet_params['selected_metric_class']], 6)
 
-    print(f"Metric '{LogNNet_params['selected_metric']}{str_metric_class} = {str_value_metric} "
+    print(f"Metric '{LogNNet_params['selected_metric']}{str_metric_class}' = {str_value_metric} "
           f"(From imported model on test set)")

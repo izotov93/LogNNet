@@ -22,16 +22,30 @@ This version is designed for research purposes and can be used for tasks such as
 
 ## Installation
 
-Installation is done from pypi using the following command
+### Dependencies
+
+LogNNet requires:
+
+* Python (>= 3.11)
+* NumPy (>= 2.1.0)
+* SciPy (>= 1.14.0)
+* Pandas (>= 2.2.2)
+* Scikit-learn (>= 1.5.1)
+* joblib (>= 1.4.2)
+
+### User installation
+
+The easiest way to install LogNNet is using `pip`:
 
 ```shell
 pip install LogNNet
 ```
-To update installed package to their latest versions, use the ```--upgrade``` option with ```pip install```
+To update installed package to their latest versions, use the `--upgrade` option with `pip install`
 ```shell
 pip install --upgrade LogNNet
 ```
-We recommend using a virtual environment.
+When using the LogNNet package, it is recommended to use a Python virtual environment.
+
 
 ## Parameters
 
@@ -78,7 +92,8 @@ For classification (LogNNetClassifier model), input of the following metrics is 
 
 7. `selected_metric_class` (int or None, optional) Default is None
 
-Select a class metric for training model. Supports input of the following metrics precision, recall and f1 for the LogNNetClassifier class.
+Select a class metric for training model. Supports input of the following metrics Precision, Recall and F1 for the LogNNetClassifier.
+If the value is not specified (None), then the default value to 1 for F1, Recall, and Precision.
 **When using LogNNetRegressor model is not used.**
 
 8. `num_folds` (int value, optional), default=1
@@ -217,6 +232,21 @@ model.fit_MLP(X, y)
 y_pred = model.predict(X)
 ....
 ```
+
+### Displaying LogNNet Information
+
+After the training of the model or importing a pre-trained LogNNet model, the dictionary "input_layer_data" will be available with the following parameters:
+
+- "W" - Contains the reservoir (weights matrix).
+- "prizn_binary" - A string with the mask of used features.
+- "Shmax", "Shmin", "X_train_max", "X_train_min" - Normalization coefficients for the formation of neurons in the first hidden layer.
+
+Built-in functions:
+
+- `get_version()` - Returns a string containing the version of the LogNNet library.
+- `get_mask_feature()` - Returns a string containing the mask of the used features in the input vector.
+- `get_LogNNet_params()` - Returns a dictionary with the parameters of the model obtained after training.
+- To get a dictionary with the perciptron parameters, you can use `LogNNet_model.mlp_model.get_params()`, where "LogNNet_model" is the name of the model after initialization.
 
 
 ## How to use examples files
